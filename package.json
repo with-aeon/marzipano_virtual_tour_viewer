@@ -5,8 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
-    "tiles:all": "node scripts/build-tiles-all.js"
+    "dev": "nodemon server.js"
   },
   "keywords": [],
   "author": "",

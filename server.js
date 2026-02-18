@@ -31,6 +31,7 @@ if (!fs.existsSync(dataDir)) {
 }
 
 const hotspotsPath = path.join(dataDir, 'hotspots.json');
+const panoramaOrderPath = path.join(dataDir, 'panorama-order.json');
 
 // Middleware to parse JSON bodies
 app.use(express.json());
@@ -54,6 +55,62 @@ const upload = multer({ storage });
 async function listUploadedImages() {
   const files = await fs.promises.readdir(uploadsDir);
   return files.filter(file => /\.(jpg|jpeg|png|gif|webp)$/i.test(file));
+}
+
+/** Return ordered list of panorama filenames: stored order first, then any new uploads not in list. */
+async function getOrderedFilenames() {
+  const existing = await listUploadedImages();
+  const existingSet = new Set(existing);
+  let order = [];
+  try {
+    const raw = fs.readFileSync(panoramaOrderPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) order = parsed.filter(f => existingSet.has(f));
+  } catch (e) {
+    if (e.code !== 'ENOENT') console.error('Error reading panorama order:', e);
+  }
+  const inOrder = new Set(order);
+  const appended = existing.filter(f => !inOrder.has(f));
+  const result = [...order, ...appended];
+  if (order.length === 0 && result.length > 0) {
+    writePanoramaOrder(result);
+  }
+  return result;
+}
+
+function readPanoramaOrder() {
+  try {
+    const raw = fs.readFileSync(panoramaOrderPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    if (e.code !== 'ENOENT') console.error('Error reading panorama order:', e);
+    return [];
+  }
+}
+
+function writePanoramaOrder(order) {
+  fs.writeFileSync(panoramaOrderPath, JSON.stringify(order, null, 2), 'utf8');
+}
+
+function panoramaOrderReplace(oldFilename, newFilename) {
+  const order = readPanoramaOrder();
+  const i = order.indexOf(oldFilename);
+  if (i !== -1) order[i] = newFilename;
+  else order.push(newFilename);
+  writePanoramaOrder(order);
+}
+
+function panoramaOrderRemove(filename) {
+  const order = readPanoramaOrder().filter(f => f !== filename);
+  writePanoramaOrder(order);
+}
+
+function panoramaOrderAppend(filenames) {
+  const order = readPanoramaOrder();
+  const set = new Set(order);
+  for (const f of filenames) if (!set.has(f)) { order.push(f); set.add(f); }
+  writePanoramaOrder(order);
 }
 
 async function ensureTilesForFilename(filename) {
@@ -87,6 +144,7 @@ app.post('/upload', upload.array("panorama", 20), async (req, res)=>{
     for (const file of req.files) {
       await ensureTilesForFilename(file.filename);
     }
+    panoramaOrderAppend(req.files.map(f => f.filename));
     res.json({
       success: true,
       uploaded: req.files.map(f => f.filename)
@@ -109,10 +167,10 @@ app.get('/upload', (req, res) => {
   });
 });
 
-// API to list panos with tile metadata (used by the viewer).
+// API to list panos with tile metadata (used by the viewer). Order preserved for stable list position.
 app.get('/api/panos', async (req, res) => {
   try {
-    const files = await listUploadedImages();
+    const files = await getOrderedFilenames();
     const result = [];
     for (const filename of files) {
       let meta = await readTilesMeta({ tilesRootDir: tilesDir, filename });
@@ -215,6 +273,7 @@ app.put('/upload/rename', (req, res) => {
       }
     }
 
+    panoramaOrderReplace(oldFilename, newFilename);
     res.json({
       success: true,
       message: 'File renamed successfully',
@@ -269,6 +328,7 @@ app.put('/upload/update', upload.single('panorama'), async (req, res) => {
     await removeDirIfExists(path.join(tilesDir, tileIdFromFilename(oldFilename)));
     await ensureTilesForFilename(req.file.filename);
 
+    panoramaOrderReplace(oldFilename, req.file.filename);
     res.json({
       success: true,
       message: 'Image updated successfully',
@@ -342,6 +402,7 @@ app.delete('/upload/:filename', (req, res) => {
         message: 'Error deleting file'
       });
     }
+    panoramaOrderRemove(filename);
     // Delete tiles folder too (best-effort).
     const tilesPath = path.join(tilesDir, tileIdFromFilename(filename));
     if (fs.existsSync(tilesPath)) {

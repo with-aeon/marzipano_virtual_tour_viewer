@@ -7,7 +7,7 @@ const {
   readTilesMeta,
   tileIdFromFilename,
   removeDirIfExists
-} = require('./lib/tiler');
+} = require('./public/js/tiler');
 
 const app = express();
 const PORT = 3000;
@@ -25,7 +25,7 @@ if (!fs.existsSync(tilesDir)) {
 }
 
 // Ensure data directory exists (for hotspots etc.)
-const dataDir = path.join(__dirname, 'data');
+const dataDir = path.join(__dirname, 'public', 'data');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir);
 }

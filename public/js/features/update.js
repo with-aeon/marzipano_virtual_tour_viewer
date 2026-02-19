@@ -30,6 +30,19 @@ async function handleUpdate() {
     formData.append('panorama', file);
     formData.append('oldFilename', selectedImageName);
 
+    // Find the corresponding <li> and show updating text
+    const imageListEl = document.getElementById('pano-image-list');
+    let updatingLi = null;
+    if (imageListEl) {
+      updatingLi = Array.from(imageListEl.children).find(
+        li => li.textContent === selectedImageName
+      );
+      if (updatingLi) {
+        updatingLi.dataset.originalText = updatingLi.textContent;
+        updatingLi.textContent = 'Updating image…';
+      }
+    }
+
     try {
       const res = await fetch('/upload/update', {
         method: 'PUT',
@@ -43,9 +56,17 @@ async function handleUpdate() {
         await loadImages(cleanupHotspotsForDeletedImages);
         await loadPanorama(data.newFilename);
       } else {
+        if (updatingLi && updatingLi.dataset.originalText) {
+          updatingLi.textContent = updatingLi.dataset.originalText;
+          delete updatingLi.dataset.originalText;
+        }
         await showAlert('Error updating image: ' + data.message, 'Update');
       }
     } catch (error) {
+      if (updatingLi && updatingLi.dataset.originalText) {
+        updatingLi.textContent = updatingLi.dataset.originalText;
+        delete updatingLi.dataset.originalText;
+      }
       await showAlert('Error updating image: ' + error, 'Update');
     }
 

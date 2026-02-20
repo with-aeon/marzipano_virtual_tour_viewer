@@ -10,10 +10,24 @@ body {
     padding: 1rem;
     color: #888;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 16px;
     height: 100%;
     box-sizing: border-box;
+}
+#pano-viewer .no-pano-home-btn {
+    padding: 10px 20px;
+    background: #115272;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 4px;
+    font-weight: 600;
+    transition: background 0.2s;
+}
+#pano-viewer .no-pano-home-btn:hover {
+    background: #0d3d52;
 }
 .action-btn {
     color: #fff;

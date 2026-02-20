@@ -149,7 +149,7 @@ export async function loadImages(onImagesLoaded) {
       selectedImageName = null;
       viewer = null;
       updateHeaderText(null);
-      if (panoViewerEl) panoViewerEl.innerHTML = '<p class="no-pano-msg">No panoramas. Upload one to get started.</p>';
+      if (panoViewerEl) panoViewerEl.innerHTML = '<div class="no-pano-msg"><p>No panoramas. Upload one to get started.</p><a href="index.html" class="no-pano-home-btn">← Home</a></div>';
     }
   } catch (error) {
     alert('Error loading images: ' + error);

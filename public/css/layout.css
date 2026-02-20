@@ -15,6 +15,7 @@ body.no-pano-header #pano-panel {
     display: flex;
     gap: 12px;
     margin-bottom: 24px;
+    margin-left: 180px;
 }
 .home-main .action-btn {
     padding: 12px 24px;
@@ -37,8 +38,11 @@ body.no-pano-header #pano-panel {
 }
 .home-main h1 {
     font-size: 1.5rem;
-    color: #333;
+    color: #fff;
     margin-bottom: 28px;
+    background-color: #0d3d52;
+    padding: 0 5rem;
+    margin-left: -470px;
 }
 .project-list {
     display: flex;

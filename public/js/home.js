@@ -212,7 +212,6 @@ modalCreateBtn.onclick = async () => {
     projectListEl.appendChild(renderProjectRow(created));
     updateEmptyState();
     newProjectModal.classList.remove('visible');
-    openProject(created);
   } catch (e) {
     alert(e.message);
   }
@@ -232,7 +231,7 @@ document.getElementById('btn-open-project').onclick = async () => {
         input.type = 'text';
         input.className = 'project-name-input';
         input.value = p.name;
-        input.readOnly = true;
+        input.disabled = true;
         input.style.cursor = 'pointer';
         const openBtn = document.createElement('button');
         openBtn.className = 'btn-open';

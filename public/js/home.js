@@ -1,7 +1,3 @@
-/**
- * Homepage: project list, New Project, Open Project, Rename, Delete
- */
-
 const projectListEl = document.getElementById('project-list');
 const emptyStateEl = document.getElementById('empty-state');
 const newProjectModal = document.getElementById('new-project-modal');

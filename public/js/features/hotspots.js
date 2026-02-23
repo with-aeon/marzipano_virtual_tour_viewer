@@ -1,6 +1,3 @@
-/**
- * Hotspot feature: place hotspots (with optional link to another image); each pin has a small remove icon beside it.
- */
 import {
   getCurrentScene,
   getSelectedImageName,
@@ -14,13 +11,11 @@ import { appendProjectParams } from '../project-context.js';
 const HOTSPOT_CLASS = 'app-hotspot-pin';
 const HOTSPOT_REMOVE_CLASS = 'app-hotspot-remove';
 const STORAGE_KEY = 'marzipano-hotspots';
-
 const panoViewerEl = document.getElementById('pano-viewer');
 const hotspotBtnEl = document.getElementById('pano-hotspot-btn');
 
 /** Place mode: click on pano = add hotspot (then choose link). */
 let placeMode = false;
-
 let nextHotspotId = 0;
 
 /**

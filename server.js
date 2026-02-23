@@ -12,7 +12,6 @@ const {
 const app = express();
 const PORT = 3000;
 
-// Projects root: each project has upload/, tiles/, data/ in one folder
 const projectsDir = path.join(__dirname, 'projects');
 const projectsManifestPath = path.join(projectsDir, 'projects.json');
 

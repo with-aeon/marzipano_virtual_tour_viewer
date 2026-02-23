@@ -17,8 +17,11 @@
             </button>
         </div>
         <div id="project-container">
-            <h1>List of Projects</h1>
-            <div class="project-list" id="project-list"></div>
+            <section id="project-container-header">
+                <p>Project Name</p>
+                <p id="header-action">Action</p>
+            </section>
+            <section class="project-list" id="project-list"></section>
         </div>
         <p class="empty-state" id="empty-state">No projects yet. Create one to get started.</p>
     </main>
@@ -52,6 +55,17 @@
             <div class="modal-actions">
                 <button type="button" class="btn-secondary" id="rename-modal-cancel">Cancel</button>
                 <button type="button" class="btn-primary" id="rename-modal-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="delete-project-modal">
+        <div class="modal">
+            <h2>Delete Project</h2>
+            <p id="delete-project-text"></p>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" id="delete-modal-cancel">Cancel</button>
+                <button type="button" class="btn-primary" id="delete-modal-confirm">Delete</button>
             </div>
         </div>
     </div>

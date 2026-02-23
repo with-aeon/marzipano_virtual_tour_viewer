@@ -12,6 +12,10 @@ const renameProjectNameInput = document.getElementById('rename-project-name');
 const renameProjectErrorEl = document.getElementById('rename-project-error');
 const renameModalCancelBtn = document.getElementById('rename-modal-cancel');
 const renameModalSaveBtn = document.getElementById('rename-modal-save');
+const deleteProjectModal = document.getElementById('delete-project-modal');
+const deleteProjectTextEl = document.getElementById('delete-project-text');
+const deleteModalCancelBtn = document.getElementById('delete-modal-cancel');
+const deleteModalConfirmBtn = document.getElementById('delete-modal-confirm');
 
 const MAX_PROJECT_NAME_LENGTH = 100;
 
@@ -125,6 +129,36 @@ function showRenameModal(project, nameDisplayEl) {
   };
 }
 
+function showDeleteModal(project, rowEl) {
+  deleteProjectTextEl.textContent = `Are you sure you want to delete "${project.name}"? This cannot be undone.`;
+  deleteProjectModal.classList.add('visible');
+  deleteModalConfirmBtn.focus();
+
+  const cleanup = () => {
+    deleteModalCancelBtn.onclick = null;
+    deleteModalConfirmBtn.onclick = null;
+    deleteProjectModal.onclick = null;
+    deleteProjectModal.classList.remove('visible');
+  };
+
+  deleteModalCancelBtn.onclick = cleanup;
+
+  deleteModalConfirmBtn.onclick = async () => {
+    try {
+      await deleteProject(project.id);
+      rowEl.remove();
+      updateEmptyState();
+      cleanup();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  deleteProjectModal.onclick = (e) => {
+    if (e.target === deleteProjectModal) cleanup();
+  };
+}
+
 function renderProjectRow(project) {
   const row = document.createElement('div');
   row.className = 'project-row';
@@ -156,16 +190,7 @@ function renderProjectRow(project) {
 
   renameBtn.onclick = () => showRenameModal(project, nameDisplay);
 
-  deleteBtn.onclick = async () => {
-    if (!confirm(`Delete project "${project.name}"? This cannot be undone.`)) return;
-    try {
-      await deleteProject(project.id);
-      row.remove();
-      updateEmptyState();
-    } catch (e) {
-      alert(e.message);
-    }
-  };
+  deleteBtn.onclick = () => showDeleteModal(project, row);
 
   row.append(nameDisplay, viewBtn, renameBtn, deleteBtn);
   return row;

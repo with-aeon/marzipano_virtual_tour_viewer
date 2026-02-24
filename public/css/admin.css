@@ -1,0 +1,294 @@
+#pano-sidebar-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-start;
+  transition: transform 0.4s ease;
+  z-index: 1;
+}
+#pano-sidebar-container {
+  width: 320px;
+  max-height: 400px;
+  overflow: hidden;
+  background-color: #115272;
+  display: flex;
+  flex-direction: column;
+}
+#pano-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5rem;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #115272;
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+  border-bottom: 1px solid #1e4452;
+}
+#pano-sidebar-btn {
+  height: 44px;
+  width: 44px;
+  background-color: #196789;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+#pano-sidebar-btn > img {
+  height: 40px;
+  width: 40px;
+}
+#pano-sidebar-wrapper.collapsed {
+  transform: translateX(-320px);
+}
+#pano-menu-btn {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: fixed;
+  right: 12px;
+  color: #fff;
+  background-color: #18719e;
+  text-decoration: none;
+  font-size: 0.9rem;
+  border-radius: 5px;
+  padding: 5px;
+}
+#pano-menu-btn > img {
+  height: 15px;
+  width: 15px;
+}
+#pano-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  border: 1px solid #1e4452;
+}
+#pano-title {
+  color: white;
+  background-color: #18719e;
+  text-align: center;
+  padding: 11px;
+  white-space: nowrap; 
+}
+#pano-action {
+  
+  padding: 10px 15px;
+  position: fixed;
+  bottom: 15px;
+  right: 20px;
+  gap: 10px;
+  display: flex;
+  border-radius: 5px;
+  z-index: 1;
+  background-color: #115272;
+}
+
+#pano-upload-btn,
+#pano-update-btn,
+#pano-rename-btn,
+#pano-delete-btn,
+#pano-hotspot-btn,
+#pano-initial-view-btn {
+  padding: 5px 10px; 
+  font-weight: 550;
+  font-size: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 3px;
+  cursor: pointer;
+  margin-bottom: 5px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s;
+}
+#pano-upload-btn {
+    background-color: rgb(0, 0, 193);
+}
+#pano-delete-btn {
+  background-color: rgb(198, 0, 0);
+}
+#pano-rename-btn {
+    background-color: rgb(0, 203, 0);
+}
+#pano-update-btn {
+    background-color: rgb(209, 209, 32);
+}
+#pano-initial-view-btn {
+    background-color: rgb(203, 80, 80);
+}
+#pano-image-list {
+    overflow-y: auto;
+    border-radius: .2rem;
+    margin: .3rem;
+    list-style: none;
+    background-color: white;
+    list-style: none;
+    overflow-y: auto;
+    max-height: none;
+    display: block;
+}
+
+
+#pano-image-list li {
+    padding: 5px 10px;
+    margin: .2rem;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap; 
+    overflow: hidden;   
+    text-overflow: ellipsis;
+    background: #d4dfe4;
+    color: #333;
+    transition: background 0.2s ease, color 0.2s ease;
+    cursor: pointer;
+}
+#pano-image-list li:hover {
+    background: #c5d4db;
+}
+#pano-image-list li.active {
+    background-color: #115272;
+    color: #fff;
+}
+
+#pano-viewer-wrap {
+  flex: 1;
+  position: relative;
+  background: #fff;
+  min-width: 0;
+}
+
+#pano-viewer {
+  position: absolute;
+  inset: 0;
+  background: #000;
+}
+.no-pano-msg {
+    margin: 0;
+    padding: 1rem;
+    color: #888;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    height: 100%;
+    box-sizing: border-box;
+}
+.no-pano-home-btn {
+    padding: 10px 20px;
+    background: #115272;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 4px;
+    font-weight: 600;
+    transition: background 0.2s;
+}
+.no-pano-home-btn:hover {
+    background: #0d3d52;
+}
+
+/* Hotspot link icon - bottom right floating button */
+#pano-hotspot-btn {
+  /* border: none; */
+  background-color: #3c7b8e;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  transition: transform 0.5s;
+}
+#pano-upload-btn:hover,
+#pano-update-btn:hover,
+#pano-rename-btn:hover,
+#pano-delete-btn:hover,
+#pano-hotspot-btn:hover,
+#pano-initial-view-btn:hover {
+  transform: scale(1.05);
+}
+
+#pano-hotspot-btn.active {
+  background-color: #ffffff;
+  color: #0d3d52;
+}
+#pano-hotspot-btn.active img {
+  content: url('../assets/hotspot-icon2.png');
+}
+#pano-viewer.app-hotspot-place-mode {
+    cursor: crosshair !important;
+}
+.app-hotspot-pin {
+    position: relative;
+    display: inline-block;
+    pointer-events: auto;
+    margin-left: -22px;
+    margin-top: -22px;
+}
+.app-hotspot-pin-dot {
+    display: block;
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    min-height: 30px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    background-color: #4a7ab8;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+    transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.app-hotspot-pin-dot:hover {
+    transform: scale(1.1);
+    background-color: #5a8ac8;
+}
+.app-hotspot-remove {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    min-height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.65);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+    opacity: 0;
+}
+
+/* Show remove button when hovering the pin dot (or the remove button itself so it stays visible to click) */
+.app-hotspot-pin-dot:hover ~ .app-hotspot-remove,
+.app-hotspot-remove:hover {
+    opacity: 1;
+}
+
+.app-hotspot-remove:hover {
+    background: #8b3a3a;
+    transform: scale(1.1);
+}
+
+.app-hotspot-remove::before {
+    content: '×';
+    font-weight: bold;
+}
+

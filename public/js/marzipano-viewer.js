@@ -15,6 +15,58 @@ let selectedImageName = null;
 let onSceneLoadCallbacks = [];
 let projectName = null;
 
+/**
+ * Per-image initial views: imageName -> { yaw, pitch, fov }.
+ * Loaded from and persisted to the server (and cached in localStorage)
+ * so both admin and client can share the same starting views.
+ */
+let initialViewsByImage = {};
+let initialViewsLoaded = false;
+const INITIAL_VIEWS_STORAGE_KEY = 'marzipano-initial-views';
+
+function loadInitialViewsFromStorage() {
+  try {
+    const raw = localStorage.getItem(INITIAL_VIEWS_STORAGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data && typeof data === 'object') {
+      initialViewsByImage = data;
+    }
+  } catch (e) {
+    console.warn('Could not load initial views from localStorage', e);
+  }
+}
+
+function saveInitialViewsToStorage() {
+  try {
+    localStorage.setItem(INITIAL_VIEWS_STORAGE_KEY, JSON.stringify(initialViewsByImage));
+  } catch (e) {
+    console.warn('Could not save initial views to localStorage', e);
+  }
+}
+
+async function ensureInitialViewsLoaded() {
+  if (initialViewsLoaded) return;
+  // Try server first so views are shared across devices; fall back to localStorage on failure.
+  try {
+    const res = await fetch(appendProjectParams('/api/initial-views'));
+    if (res.ok) {
+      const data = await res.json();
+      if (data && typeof data === 'object') {
+        initialViewsByImage = data;
+        saveInitialViewsToStorage();
+        initialViewsLoaded = true;
+        return;
+      }
+    }
+  } catch (e) {
+    console.warn('Could not load initial views from server', e);
+  }
+  // Fallback path
+  loadInitialViewsFromStorage();
+  initialViewsLoaded = true;
+}
+
 const imageListEl = document.getElementById('pano-image-list');
 const panoViewerEl = document.getElementById('pano-viewer');
 const headerTextEl = document.getElementById('pano-header-text');
@@ -80,11 +132,18 @@ export async function loadPanorama(imageName) {
     source = Marzipano.ImageUrlSource.fromString(imagePath);
     geometry = new Marzipano.EquirectGeometry([{ width: FALLBACK_EQUIRECT_WIDTH }]);
   }
+  // Make sure we have the latest initial view data before creating the scene
+  await ensureInitialViewsLoaded();
   const limiter = Marzipano.RectilinearView.limit.traditional(MIN_FOV, MAX_FOV);
-  const view = new Marzipano.RectilinearView(
-    { yaw: 0, pitch: 0, fov: Math.PI / 2 },
-    limiter
-  );
+  // Use a saved initial view for this image if one exists; otherwise fall back to a centered view.
+  const savedView = initialViewsByImage && initialViewsByImage[imageName];
+  const initialParams = (savedView &&
+    typeof savedView.yaw === 'number' &&
+    typeof savedView.pitch === 'number' &&
+    typeof savedView.fov === 'number')
+    ? { yaw: savedView.yaw, pitch: savedView.pitch, fov: savedView.fov }
+    : { yaw: 0, pitch: 0, fov: Math.PI / 2 };
+  const view = new Marzipano.RectilinearView(initialParams, limiter);
   currentScene = viewer.createScene({ source, geometry, view });
   currentScene.switchTo();
 
@@ -109,6 +168,8 @@ export async function loadImages(onImagesLoaded) {
     const res = await fetch(appendProjectParams("/api/panos"));
     const panos = await res.json();
     const fileList = Array.isArray(panos) ? panos.map(p => p.filename) : [];
+    // Ensure initial views are loaded once we know the project context is valid.
+    await ensureInitialViewsLoaded();
     if (typeof onImagesLoaded === 'function') onImagesLoaded(fileList);
 
     imageListEl.innerHTML = "";
@@ -179,6 +240,66 @@ export function getViewer() {
 /** Return the current scene (for hotspot container and view). */
 export function getCurrentScene() {
   return currentScene;
+}
+
+/**
+ * Return the current view parameters (yaw, pitch, fov) for the active scene, if any.
+ */
+export function getCurrentViewParams() {
+  if (!currentScene) return null;
+  const view = currentScene.view && currentScene.view();
+  if (!view || typeof view.parameters !== 'function') return null;
+  try {
+    return view.parameters();
+  } catch (e) {
+    console.warn('Could not read current view parameters', e);
+    return null;
+  }
+}
+
+/**
+ * Save the current view as the initial view for the selected image, persisting to the server.
+ */
+export async function saveInitialViewForCurrentImage() {
+  if (!selectedImageName || !currentScene) {
+    throw new Error('No panorama is currently selected');
+  }
+  await ensureInitialViewsLoaded();
+  const params = getCurrentViewParams();
+  if (!params) {
+    throw new Error('Unable to read current view parameters');
+  }
+  initialViewsByImage[selectedImageName] = {
+    yaw: params.yaw,
+    pitch: params.pitch,
+    fov: params.fov,
+  };
+  // Persist to localStorage immediately so refresh on this device keeps the view,
+  // even if the server is temporarily unavailable.
+  saveInitialViewsToStorage();
+  const res = await fetch(appendProjectParams('/api/initial-views'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(initialViewsByImage),
+  });
+  if (!res.ok) {
+    throw new Error(`Server responded with ${res.status}`);
+  }
+}
+
+/**
+ * Update initial view when an image is renamed: move the saved view from oldName to newName.
+ */
+export function updateInitialViewForRenamedImage(oldName, newName) {
+  if (!initialViewsByImage[oldName]) return;
+  initialViewsByImage[newName] = initialViewsByImage[oldName];
+  delete initialViewsByImage[oldName];
+  saveInitialViewsToStorage();
+  fetch(appendProjectParams('/api/initial-views'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(initialViewsByImage),
+  }).catch((e) => console.warn('Could not persist initial view rename to server', e));
 }
 
 /** Register a callback to run when a new scene has finished loading. */

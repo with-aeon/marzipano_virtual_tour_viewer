@@ -205,6 +205,14 @@ function renderProjectRow(project) {
     window.location.href = `client.html?${params}`;
   };
 
+  // Make the entire row clickable to open the project,
+  // but ignore clicks that originate from the action buttons.
+  row.onclick = (e) => {
+    if (e.target.closest('button')) return;
+    const params = new URLSearchParams({ project: project.id });
+    window.location.href = `admin.html?${params}`;
+  };
+
   renameBtn.onclick = () => showRenameModal(project, nameDisplay);
 
   deleteBtn.onclick = () => showDeleteModal(project, row);

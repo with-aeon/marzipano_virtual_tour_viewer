@@ -1,4 +1,4 @@
-import { getSelectedImageName, loadImages, loadPanorama } from '../marzipano-viewer.js';
+import { getSelectedImageName, loadImages, loadPanorama, updateInitialViewForRenamedImage } from '../marzipano-viewer.js';
 import { updateHotspotsForRenamedImage } from './hotspots.js';
 import { showAlert, showPrompt } from '../dialog.js';
 import { appendProjectParams } from '../project-context.js';
@@ -45,6 +45,7 @@ async function handleRename() {
 
     if (data.success) {
       updateHotspotsForRenamedImage(selectedImageName, newFileName);
+      updateInitialViewForRenamedImage(selectedImageName, newFileName);
       await loadImages();
       await loadPanorama(newFileName);
     } else {

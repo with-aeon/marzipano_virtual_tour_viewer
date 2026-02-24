@@ -70,6 +70,7 @@ function resolvePaths(req) {
     uploadsDir: p.upload,
     tilesDir: p.tiles,
     hotspotsPath: path.join(p.data, 'hotspots.json'),
+    initialViewsPath: path.join(p.data, 'initial-views.json'),
     panoramaOrderPath: path.join(p.data, 'panorama-order.json'),
     projectId,
   };
@@ -532,6 +533,42 @@ app.post('/api/hotspots', (req, res) => {
   fs.writeFile(paths.hotspotsPath, json, 'utf8', (err) => {
     if (err) return res.status(500).json({ error: 'Unable to save hotspots' });
     res.json({ success: true });
+  });
+});
+
+// Per-image initial view parameters (yaw, pitch, fov) for each panorama
+app.get('/api/initial-views', (req, res) => {
+  const paths = resolvePaths(req);
+  if (!paths) return res.status(400).json({ error: 'Project required' });
+  fs.readFile(paths.initialViewsPath, 'utf8', (err, data) => {
+    if (err) {
+      if (err.code === 'ENOENT') return res.json({});
+      return res.status(500).json({ error: 'Unable to read initial views' });
+    }
+    try {
+      const obj = JSON.parse(data);
+      res.json(typeof obj === 'object' && obj !== null ? obj : {});
+    } catch (e) {
+      res.json({});
+    }
+  });
+});
+
+app.post('/api/initial-views', (req, res) => {
+  const body = req.body;
+  if (typeof body !== 'object' || body === null) {
+    return res.status(400).json({ error: 'Invalid payload' });
+  }
+  const paths = resolvePaths(req);
+  if (!paths) return res.status(400).json({ error: 'Project required' });
+  const json = JSON.stringify(body, null, 2);
+  const dir = path.dirname(paths.initialViewsPath);
+  fs.mkdir(dir, { recursive: true }, (mkErr) => {
+    if (mkErr) return res.status(500).json({ error: 'Unable to prepare storage for initial views' });
+    fs.writeFile(paths.initialViewsPath, json, 'utf8', (err) => {
+      if (err) return res.status(500).json({ error: 'Unable to save initial views' });
+      res.json({ success: true });
+    });
   });
 });
 

@@ -6,6 +6,7 @@ import { initDelete } from './features/delete.js';
 import { initUpload } from './features/upload.js';
 import { initHotspots, cleanupHotspotsForDeletedImages } from './features/hotspots.js';
 import { initMenuCollapsible } from './menu-collapsible.js';
+import { initInitialView } from './features/initial-view.js';
 if (!getProjectId()) {
   window.location.replace('index.html');
 } else {
@@ -15,6 +16,7 @@ if (!getProjectId()) {
   initUpload();
   initHotspots();
   initMenuCollapsible();
+  initInitialView();
 
   document.addEventListener('DOMContentLoaded', () => {
     (async () => {

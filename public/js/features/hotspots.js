@@ -401,3 +401,39 @@ function onViewerClick(e) {
   if (hotspotBtnEl) hotspotBtnEl.classList.remove('active');
   panoViewerEl.classList.remove('app-hotspot-place-mode');
 }
+
+/** Force-reload hotspots from server and restore to the current scene. */
+export async function reloadHotspots() {
+  try {
+    // Destroy any existing hotspot elements for the current scene to avoid duplicates
+    try {
+      const scene = getCurrentScene();
+      const currentImage = getSelectedImageName();
+      if (scene && currentImage) {
+        const container = scene.hotspotContainer();
+        // Destroy tracked hotspots if present
+        hotspotsByImage.forEach((list, imageName) => {
+          for (const entry of list) {
+            try {
+              if (entry.hotspot && typeof container.destroyHotspot === 'function' && container.hasHotspot && container.hasHotspot(entry.hotspot)) {
+                container.destroyHotspot(entry.hotspot);
+              }
+            } catch (err) {}
+          }
+        });
+      }
+      // Remove any leftover hotspot DOM nodes as a fallback
+      document.querySelectorAll(`.${HOTSPOT_CLASS}`).forEach(el => el.remove());
+    } catch (err) {}
+
+    hotspotsByImage.clear();
+    await loadHotspotsFromServer();
+    restoreHotspotsForCurrentScene();
+  } catch (e) {
+    console.warn('Could not reload hotspots from server', e);
+    try {
+      loadHotspotsFromStorage();
+      restoreHotspotsForCurrentScene();
+    } catch (er) {}
+  }
+}

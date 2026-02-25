@@ -197,7 +197,17 @@ const server = http.createServer(app);
 const io = new Server(server);
 
 io.on('connection', (socket) => {
-  // No-op for now; clients listen for 'projects:changed'
+  // Allow clients to join project-specific rooms so they only receive relevant pano events
+  socket.on('joinProject', (projectId) => {
+    try {
+      if (typeof projectId === 'string' && projectId.length > 0) socket.join(`project:${projectId}`);
+    } catch (e) {}
+  });
+  socket.on('leaveProject', (projectId) => {
+    try {
+      if (typeof projectId === 'string' && projectId.length > 0) socket.leave(`project:${projectId}`);
+    } catch (e) {}
+  });
 });
 
 // Multer: dynamic destination based on project (set by route)
@@ -439,6 +449,7 @@ app.post('/upload', upload.array("panorama", 20), (req, res)=>{
     jobId: job.id,
     uploaded: filenames
   });
+  // Do not notify immediately; wait until tiles are built and emit 'panos:ready'
   (async () => {
     try {
       let overall = 0;
@@ -459,6 +470,8 @@ app.post('/upload', upload.array("panorama", 20), (req, res)=>{
         });
       }
       panoramaOrderAppend(paths, filenames);
+      // Notify clients that tiles are ready for these panos
+      try { io.to(`project:${paths.projectId}`).emit('panos:ready', { filenames }); } catch (e) { console.error('Socket emit error:', e); }
       job.percent = 100;
       job.status = 'done';
       job.message = 'Completed';
@@ -520,6 +533,7 @@ app.put('/api/panos/order', (req, res) => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     writePanoramaOrder(paths.panoramaOrderPath, body.order);
     res.json({ success: true });
+    try { io.to(`project:${paths.projectId}`).emit('panos:order', { order: body.order }); } catch (e) { console.error('Socket emit error:', e); }
   } catch (e) {
     console.error('Error writing panorama order:', e);
     res.status(500).json({ error: 'Unable to save order' });
@@ -611,6 +625,7 @@ app.put('/upload/rename', (req, res) => {
     }
 
     panoramaOrderReplace(paths, oldFilename, newFilename);
+    try { io.to(`project:${paths.projectId}`).emit('pano:renamed', { oldFilename, newFilename }); } catch (e) { console.error('Socket emit error:', e); }
     res.json({
       success: true,
       message: 'File renamed successfully',
@@ -666,6 +681,7 @@ app.put('/upload/update', upload.single('panorama'), (req, res) => {
       job.percent = 100;
       job.status = 'done';
       job.message = 'Update completed';
+      try { io.to(`project:${paths.projectId}`).emit('pano:updated', { oldFilename, newFilename }); } catch (e) { console.error('Socket emit error:', e); }
     } catch (e) {
       console.error('Error updating image tiles:', e);
       const msg = `Error updating image tiles: ${e.message || e}`;
@@ -704,6 +720,7 @@ app.post('/api/hotspots', (req, res) => {
   fs.writeFile(paths.hotspotsPath, json, 'utf8', (err) => {
     if (err) return res.status(500).json({ error: 'Unable to save hotspots' });
     res.json({ success: true });
+    try { io.to(`project:${paths.projectId}`).emit('hotspots:changed', body); } catch (e) { console.error('Socket emit error:', e); }
   });
 });
 
@@ -739,6 +756,7 @@ app.post('/api/initial-views', (req, res) => {
     fs.writeFile(paths.initialViewsPath, json, 'utf8', (err) => {
       if (err) return res.status(500).json({ error: 'Unable to save initial views' });
       res.json({ success: true });
+      try { io.to(`project:${paths.projectId}`).emit('initial-views:changed', body); } catch (e) { console.error('Socket emit error:', e); }
     });
   });
 });
@@ -776,6 +794,7 @@ app.delete('/upload/:filename', (req, res) => {
       });
     }
     panoramaOrderRemove(paths, filename);
+    try { io.to(`project:${paths.projectId}`).emit('pano:removed', { filename }); } catch (e) { console.error('Socket emit error:', e); }
     const tilesPath = path.join(paths.tilesDir, tileIdFromFilename(filename));
     if (fs.existsSync(tilesPath)) {
       fs.rm(tilesPath, { recursive: true, force: true }, (rmErr) => {

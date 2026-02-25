@@ -1,12 +1,13 @@
-import { initViewer, loadImages, setProjectName } from './marzipano-viewer.js';
+import { initViewer, loadImages, setProjectName, updateInitialViewForRenamedImage } from './marzipano-viewer.js';
 import { getProjectId } from './project-context.js';
 import { initRename } from './features/rename.js';
 import { initUpdate } from './features/update.js';
 import { initDelete } from './features/delete.js';
 import { initUpload } from './features/upload.js';
-import { initHotspots, cleanupHotspotsForDeletedImages } from './features/hotspots.js';
+import { initHotspots, cleanupHotspotsForDeletedImages, updateHotspotsForRenamedImage, reloadHotspots } from './features/hotspots.js';
 import { initMenuCollapsible } from './menu-collapsible.js';
 import { initInitialView } from './features/initial-view.js';
+import { reloadInitialViews } from './marzipano-viewer.js';
 import { io } from '/socket.io/socket.io.esm.min.js';
 if (!getProjectId()) {
   window.location.replace('index.html');
@@ -36,11 +37,37 @@ if (!getProjectId()) {
   // Realtime project name updates
   try {
     const socket = io();
+    const pid = getProjectId();
+    if (pid) socket.emit('joinProject', pid);
     socket.on('projects:changed', (projects) => {
       const id = getProjectId();
       if (!id) return;
       const proj = Array.isArray(projects) ? projects.find(p => p.id === id) : null;
       if (proj && proj.name) setProjectName(proj.name);
+    });
+
+    socket.on('panos:ready', (payload) => {
+      loadImages(cleanupHotspotsForDeletedImages);
+    });
+    socket.on('panos:order', (payload) => {
+      loadImages(cleanupHotspotsForDeletedImages);
+    });
+    socket.on('pano:renamed', (payload) => {
+      try { updateInitialViewForRenamedImage(payload.oldFilename, payload.newFilename); } catch (e) {}
+      try { updateHotspotsForRenamedImage(payload.oldFilename, payload.newFilename); } catch (e) {}
+      loadImages(cleanupHotspotsForDeletedImages);
+    });
+    socket.on('pano:updated', (payload) => {
+      loadImages(cleanupHotspotsForDeletedImages);
+    });
+    socket.on('pano:removed', (payload) => {
+      loadImages(cleanupHotspotsForDeletedImages);
+    });
+    socket.on('hotspots:changed', (payload) => {
+      try { reloadHotspots(); } catch (e) {}
+    });
+    socket.on('initial-views:changed', async (payload) => {
+      try { await reloadInitialViews(); } catch (e) {}
     });
   } catch (e) {}
 }

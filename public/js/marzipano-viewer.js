@@ -393,6 +393,20 @@ export function updateInitialViewForRenamedImage(oldName, newName) {
   }).catch((e) => console.warn('Could not persist initial view rename to server', e));
 }
 
+/** Force-reload initial views from the server and reapply to the current scene. */
+export async function reloadInitialViews() {
+  initialViewsLoaded = false;
+  try {
+    await ensureInitialViewsLoaded();
+    if (selectedImageName) {
+      // Re-load current panorama to apply new initial view params
+      await loadPanorama(selectedImageName);
+    }
+  } catch (e) {
+    console.warn('Could not reload initial views', e);
+  }
+}
+
 /** Register a callback to run when a new scene has finished loading. */
 export function registerOnSceneLoad(callback) {
   if (typeof callback === 'function') {

@@ -56,6 +56,13 @@ body {
     padding: 10px 12px;
     font-size: 1rem;
 }
+#new-project-name {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 1rem;
+}
 .modal-actions {
     display: flex;
     gap: 8px;

@@ -115,3 +115,13 @@ export async function initHotspotsClient() {
   await loadHotspots();
   registerOnSceneLoad(restoreHotspotsForCurrentScene);
 }
+
+/** Reload hotspots from server and apply to current scene (for realtime updates). */
+export async function reloadHotspots() {
+  try {
+    // Remove any existing client hotspot DOM nodes to avoid duplicates
+    document.querySelectorAll(`.${HOTSPOT_CLASS}`).forEach(el => el.remove());
+  } catch (e) {}
+  await loadHotspots();
+  try { restoreHotspotsForCurrentScene(); } catch (e) {}
+}

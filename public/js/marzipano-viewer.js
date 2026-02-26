@@ -1,4 +1,4 @@
-import Marzipano from "https://cdn.skypack.dev/marzipano";
+import Marzipano from "//cdn.skypack.dev/marzipano";
 import { getUploadBase, getTilesBase, appendProjectParams } from './project-context.js';
 
 // --- constants ---

@@ -46,9 +46,46 @@
   width: 100%;
   background-color: #0d3d52;
 }
+
+/* layout for each row: match header spacing */
+.project-row {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+}
+
+/* cells inside a row */
+.project-number-cell,
+.project-name-cell,
+.project-actions-cell {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+/* preserve previous display styles on the inner elements */
+.project-number-display,
+.project-name-display {
+    flex: 1;
+    min-width: 0;
+    padding: 12px 16px;
+    font-size: 1rem;
+    color: #333;
+    cursor: pointer;
+}
+
+.project-actions-cell > button {
+    margin: 0 4px;
+    justify-content: flex-start;
+}
+
 #project-container-header p {
   color: white;
   padding: 1rem 0;
+  flex: 1;
+  text-align: center;
 }
 .action-btn {
     padding: 1rem;
@@ -101,9 +138,6 @@
 .project-search-input:focus {
   border-color: #115272;
 }
-#header-action {
-  margin-left: 365px;
-}
 .project-list {
     display: flex;
     flex-direction: column;
@@ -115,14 +149,23 @@
 }
 .project-row {
     display: flex;
-    justify-content: center;
+    justify-content: space-around;
     align-items: center;
-    gap: 12px;
     width: 100%;
     background: #e8ecef;
     border: 1px solid #d0d5da;
     padding: 5px;
     border-radius: 5px;
+}
+
+.project-number-cell,
+.project-name-cell,
+.project-actions-cell {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
 }
 .project-name-input {
     flex: 1;

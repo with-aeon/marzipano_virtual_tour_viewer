@@ -52,10 +52,23 @@ body {
     box-shadow: 0 8px 32px rgba(0,0,0,0.2);
 }
 .modal h2 { margin-bottom: 16px; font-size: 1.25rem; }
+.form-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 16px;
+}
+.form-group label {
+    margin-bottom: 6px;
+    font-weight: 600;
+    color: #000;
+    font-size: 0.95rem;
+}
 .modal input {
     width: 100%;
     padding: 10px 12px;
     font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
 }
 #new-project-name {
     border: 1px solid #ccc;

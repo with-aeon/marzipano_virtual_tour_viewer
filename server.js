@@ -314,11 +314,12 @@ app.get('/api/projects', (req, res) => {
 });
 
 app.post('/api/projects', (req, res) => {
-  const { name } = req.body || {};
+  const { name, number } = req.body || {};
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ success: false, message: 'Project name is required' });
   }
   const trimmedName = name.trim();
+  const trimmedNumber = number ? String(number).trim() : '';
   let id = sanitizeProjectId(name);
   const projects = getProjectsManifest();
   const normalized = trimmedName.toLowerCase();
@@ -332,7 +333,7 @@ app.post('/api/projects', (req, res) => {
   }
   const finalId = id;
   ensureProjectDirs(finalId);
-  const project = { id: finalId, name: trimmedName };
+  const project = { id: finalId, name: trimmedName, number: trimmedNumber };
   projects.push(project);
   writeProjectsManifest(projects);
   // Notify connected clients about project list changes

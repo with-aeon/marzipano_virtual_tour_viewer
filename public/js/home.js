@@ -2,6 +2,7 @@ const projectListEl = document.getElementById('project-list');
 const emptyStateEl = document.getElementById('empty-state');
 const projectSearchInput = document.getElementById('project-search-input');
 const newProjectModal = document.getElementById('new-project-modal');
+const newProjectNumberInput = document.getElementById('new-project-number');
 const newProjectNameInput = document.getElementById('new-project-name');
 const newProjectErrorEl = document.getElementById('new-project-error');
 const modalCreateBtn = document.getElementById('modal-create');
@@ -51,11 +52,11 @@ async function fetchProjects() {
   return res.json();
 }
 
-async function createProject(name) {
+async function createProject(name, number) {
   const res = await fetch('/api/projects', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: name.trim() }),
+    body: JSON.stringify({ name: name.trim(), number: number ? number.trim() : '' }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || 'Failed to create project');
@@ -210,9 +211,21 @@ function renderProjectRow(project) {
   row.className = 'project-row';
   row.dataset.projectId = project.id;
 
+  // cell for project number
+  const numberDisplay = document.createElement('div');
+  numberDisplay.className = 'project-number-display';
+  numberDisplay.textContent = project.number || '';
+  const numberCell = document.createElement('div');
+  numberCell.className = 'project-number-cell';
+  numberCell.appendChild(numberDisplay);
+
+  // cell for project name
   const nameDisplay = document.createElement('div');
   nameDisplay.className = 'project-name-display';
   nameDisplay.textContent = project.name;
+  const nameCell = document.createElement('div');
+  nameCell.className = 'project-name-cell';
+  nameCell.appendChild(nameDisplay);
 
   const viewBtn = document.createElement('button');
   viewBtn.type = 'button';
@@ -298,7 +311,12 @@ viewBtn.addEventListener("mouseleave", () => {
 
   deleteBtn.onclick = () => showDeleteModal(project, row);
 
-  row.append(nameDisplay, viewBtn, renameBtn, deleteBtn);
+  // group buttons into their own cell
+  const actionsCell = document.createElement('div');
+  actionsCell.className = 'project-actions-cell';
+  actionsCell.append(viewBtn, renameBtn, deleteBtn);
+
+  row.append(numberCell, nameCell, actionsCell);
   return row;
 }
 
@@ -322,7 +340,10 @@ function applyProjectSearch() {
     return;
   }
   const q = query.toLowerCase();
-  const filtered = allProjects.filter((p) => (p.name || '').toLowerCase().includes(q));
+  const filtered = allProjects.filter((p) => 
+    (p.name || '').toLowerCase().includes(q) || 
+    (p.number || '').toLowerCase().includes(q)
+  );
   renderProjectList(filtered);
 }
 
@@ -337,10 +358,11 @@ async function loadProjects() {
 }
 
 document.getElementById('btn-new-project').onclick = () => {
+  newProjectNumberInput.value = '';
   newProjectNameInput.value = '';
   if (newProjectErrorEl) newProjectErrorEl.textContent = '';
   newProjectModal.classList.add('visible');
-  newProjectNameInput.focus();
+  newProjectNumberInput.focus();
 };
 
 modalCancelBtn.onclick = () => {
@@ -348,6 +370,7 @@ modalCancelBtn.onclick = () => {
 };
 
 modalCreateBtn.onclick = async () => {
+  const number = newProjectNumberInput.value.trim();
   const name = newProjectNameInput.value.trim();
   if (!name) {
     if (newProjectErrorEl) newProjectErrorEl.textContent = 'Please enter a project name.';
@@ -358,7 +381,7 @@ modalCreateBtn.onclick = async () => {
     return;
   }
   try {
-    const created = await createProject(name);
+    const created = await createProject(name, number);
     // Avoid duplicating the project if the realtime socket already added it
     if (!allProjects.some(p => p.id === created.id)) {
       allProjects.push(created);

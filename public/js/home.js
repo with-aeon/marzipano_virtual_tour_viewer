@@ -27,6 +27,25 @@ import { io } from '/socket.io/socket.io.esm.min.js';
 const MAX_PROJECT_NAME_LENGTH = 100;
 let allProjects = [];
 
+// Ensure project number input only allows digits
+if (newProjectNumberInput) {
+  newProjectNumberInput.addEventListener('input', (e) => {
+    const cleaned = (e.target.value || '').replace(/\D+/g, '');
+    if (e.target.value !== cleaned) e.target.value = cleaned;
+  });
+  newProjectNumberInput.addEventListener('paste', (e) => {
+    // sanitize pasted content
+    e.preventDefault();
+    const paste = (e.clipboardData || window.clipboardData).getData('text') || '';
+    const filtered = paste.replace(/\D+/g, '');
+    const el = e.target;
+    const start = el.selectionStart || 0;
+    const end = el.selectionEnd || 0;
+    const newValue = (el.value.slice(0, start) + filtered + el.value.slice(end)).replace(/\D+/g, '');
+    el.value = newValue;
+  });
+}
+
 function normalizeProjectName(name) {
   return (name || '').trim().toLowerCase();
 }
@@ -370,7 +389,7 @@ modalCancelBtn.onclick = () => {
 };
 
 modalCreateBtn.onclick = async () => {
-  const number = newProjectNumberInput.value.trim();
+  const number = (newProjectNumberInput.value || '').trim().replace(/\D+/g, '');
   const name = newProjectNameInput.value.trim();
   if (!name) {
     if (newProjectErrorEl) newProjectErrorEl.textContent = 'Please enter a project name.';

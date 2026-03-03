@@ -97,6 +97,34 @@
   padding: 11px;
   white-space: nowrap; 
 }
+
+/* Tabs for Panoramic Scenes / Floor Plan */
+#pano-sidebar-tabs {
+  display: flex;
+}
+
+#pano-sidebar-tabs button {
+  flex: 1;
+  padding: 8px 10px;
+  background-color: #18719e;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+#pano-sidebar-tabs button + button {
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+#pano-sidebar-tabs button.active-tab {
+  background-color: #0b4f6c;
+}
+
+#pano-sidebar-content {
+  padding: 4px;
+}
 #pano-action {
   padding: 10px 15px;
   position: fixed;
@@ -152,7 +180,7 @@
     list-style: none;
     overflow-y: auto;
     max-height: none;
-    display: block;
+  display: block; /* shown when Panoramic Scenes tab is active */
 }
 
 
@@ -182,6 +210,52 @@
 }
 #pano-image-list li.dragging {
   opacity: 0.5;
+}
+
+/* Floor plan list: separate content from pano-image-list */
+#pano-floorplan-list {
+  overflow-y: auto;
+  border-radius: .2rem;
+  margin: .3rem;
+  list-style: none;
+  background-color: white;
+  max-height: none;
+  display: none; /* hidden by default; shown when Floor Plan tab is active */
+}
+
+#pano-floorplan-list li {
+  padding: 5px 10px;
+  margin: .2rem;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: #d4dfe4;
+  color: #333;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+#pano-floorplan-list li:hover {
+  background: #c5d4db;
+}
+
+/* Circle "+" button for adding floor plans */
+#add-plan-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid #17a2b8;
+  background: #ffffff;
+  color: #17a2b8;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0.25rem auto;
 }
 
 #pano-viewer-wrap {

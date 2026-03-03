@@ -30,6 +30,15 @@
   font-weight: 600;
   font-size: 1rem;
   border-bottom: 1px solid #1e4452;
+  /* ensure relative positioning for absolute child centering */
+  position: relative;
+}
+
+#pano-header-text {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }
 #pano-sidebar-btn {
   height: 44px;
@@ -51,14 +60,22 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  position: fixed;
-  right: 12px;
+  /* moved into header-controls container for positioning */
   color: #fff;
   background-color: #18719e;
   text-decoration: none;
   font-size: 0.9rem;
   border-radius: 5px;
   padding: 5px;
+}
+
+/* wrapper for the login/logout and menu links so they stay together */
+#header-controls {
+  position: fixed;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 #pano-menu-btn > img {
   height: 15px;

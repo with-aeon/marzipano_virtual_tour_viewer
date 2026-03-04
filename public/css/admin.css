@@ -10,6 +10,7 @@
 #pano-sidebar-container {
   width: 320px;
   max-height: 400px;
+  margin: .5rem;
   overflow: hidden;
   background-color: #115272;
   display: flex;
@@ -172,14 +173,13 @@
     background-color: rgb(203, 80, 80);
 }
 #pano-image-list {
-    overflow-y: auto;
-    border-radius: .2rem;
-    margin: .3rem;
-    list-style: none;
-    background-color: white;
-    list-style: none;
-    overflow-y: auto;
-    max-height: none;
+  overflow-y: auto;
+  border-radius: .2rem;
+  margin: .3rem;
+  list-style: none;
+  background-color: white;
+  list-style: none;
+  max-height: 45vh;
   display: block; /* shown when Panoramic Scenes tab is active */
 }
 
@@ -219,7 +219,7 @@
   margin: .3rem;
   list-style: none;
   background-color: white;
-  max-height: none;
+  max-height: 45vh;
   display: none; /* hidden by default; shown when Floor Plan tab is active */
 }
 
@@ -246,16 +246,12 @@
   height: 32px;
   border-radius: 50%;
   border: 2px solid #17a2b8;
-  background: #ffffff;
-  color: #17a2b8;
-  font-size: 1.3rem;
-  line-height: 1;
-  cursor: pointer;
+  position: absolute;
+  bottom: -.5rem;
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0.25rem auto;
+  cursor: pointer;
+  margin-left: 8.5rem;
+  max-height: 350px;
 }
 
 #pano-viewer-wrap {
@@ -408,8 +404,8 @@
 }
 
 .floorplan-update {
-  background: #ffd54f;
-  color: #333;
+  background: #d4b54e;
+  color: #ffffff;
 }
 
 .floorplan-rename {
@@ -451,8 +447,8 @@ body.floorplan-modal-open #pano-panel {
 }
 
 .floorplan-hotspot-pin-dot {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   border: 2px solid #ffffff;
   background: #4a7ab8;
@@ -472,10 +468,10 @@ body.floorplan-modal-open #pano-panel {
   position: absolute;
   top: -6px;
   right: -6px;
-  width: 18px;
-  height: 18px;
-  min-width: 18px;
-  min-height: 18px;
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  min-height: 15px;
   padding: 0;
   border: none;
   border-radius: 50%;

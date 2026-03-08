@@ -328,6 +328,15 @@ function writeFloorplanOrder(floorplanOrderPath, order) {
   fs.writeFileSync(floorplanOrderPath, JSON.stringify(order, null, 2), 'utf8');
 }
 
+function floorplanOrderReplace(paths, oldFilename, newFilename) {
+  const order = readFloorplanOrder(paths.floorplanOrderPath);
+  const i = order.indexOf(oldFilename);
+  if (i !== -1) order[i] = newFilename;
+  else order.push(newFilename);
+  writeFloorplanOrder(paths.floorplanOrderPath, order);
+  return order;
+}
+
 /** Return ordered list of floor plan filenames; stored order first, then any new files not in list. */
 async function getOrderedFloorplanFilenames(paths) {
   const existing = await listFloorplanImages(paths.floorplansDir);
@@ -631,37 +640,77 @@ app.post('/upload-floorplan', floorplanUpload.array('floorplan', 20), async (req
   res.json({ success: true, uploaded: filenames });
 });
 
-// Update/replace a single floor plan image while keeping the filename reference.
+// Update/replace a single floor plan image and adopt the uploaded filename.
 // Body fields (multipart/form-data):
 // - floorplan: new image file
 // - oldFilename: existing floorplan filename to replace
 app.put('/upload-floorplan/update', floorplanUpload.single('floorplan'), async (req, res) => {
+  const cleanupUploadedFile = async () => {
+    if (!req.file || !req.file.path) return;
+    try {
+      await fs.promises.unlink(req.file.path);
+    } catch (e) {}
+  };
+
   const oldFilename = req.body && req.body.oldFilename;
   if (!oldFilename) {
+    await cleanupUploadedFile();
     return res.status(400).json({ success: false, message: 'Old filename is required' });
   }
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'No new file uploaded' });
   }
   if (oldFilename.includes('..') || oldFilename.includes('/') || oldFilename.includes('\\')) {
+    await cleanupUploadedFile();
     return res.status(400).json({ success: false, message: 'Invalid filename' });
   }
   const paths = resolvePaths(req);
   if (!paths) {
+    await cleanupUploadedFile();
     return res.status(400).json({ success: false, message: 'Project required' });
   }
   const oldFilePath = path.join(paths.floorplansDir, oldFilename);
   if (!fs.existsSync(oldFilePath)) {
+    await cleanupUploadedFile();
     return res.status(404).json({ success: false, message: 'Old floor plan not found' });
   }
-
-  const newFilePath = path.join(paths.floorplansDir, oldFilename);
+  const newFilename = req.file.filename;
   try {
-    await fs.promises.unlink(oldFilePath).catch(() => {});
-    await fs.promises.rename(req.file.path, newFilePath);
-    return res.json({ success: true, message: 'Floor plan updated successfully', filename: oldFilename });
+    if (oldFilename === newFilename) {
+      return res.json({
+        success: true,
+        message: 'Floor plan updated successfully',
+        oldFilename,
+        newFilename,
+        filename: newFilename
+      });
+    }
+
+    await fs.promises.unlink(oldFilePath);
+
+    let updatedOrder = null;
+    try {
+      updatedOrder = floorplanOrderReplace(paths, oldFilename, newFilename);
+    } catch (e) {
+      console.error('Error updating floor plan order:', e);
+    }
+
+    try {
+      io.to(`project:${paths.projectId}`).emit('floorplans:order', { order: updatedOrder });
+    } catch (e) {
+      console.error('Socket emit error:', e);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Floor plan updated successfully',
+      oldFilename,
+      newFilename,
+      filename: newFilename
+    });
   } catch (e) {
     console.error('Error updating floor plan:', e);
+    await cleanupUploadedFile();
     return res.status(500).json({ success: false, message: 'Error updating floor plan' });
   }
 });

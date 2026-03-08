@@ -1,5 +1,5 @@
 import { loadImages } from '../marzipano-viewer.js';
-import { showAlert, showProgressDialog, hideProgressDialog, updateProgressDialog, setProgressDialogMessage } from '../dialog.js';
+import { showAlert, showTimedAlert, showProgressDialog, hideProgressDialog, updateProgressDialog, setProgressDialogMessage } from '../dialog.js';
 import { appendProjectParams } from '../project-context.js';
 
 const addPanoEl = document.getElementById('add-scene');
@@ -79,6 +79,7 @@ async function handleUpload() {
             updateProgressDialog(100);
             hideProgressDialog();
             await loadImages();
+            await showTimedAlert('Panorama image(s) uploaded successfully.', 'Upload', 500);
             return true; // Done
           } else {
               const p = typeof job.percent === 'number' ? job.percent : 0;

@@ -19,6 +19,11 @@ let modalTitleEl = null;
 let modalHotspotLayer = null;
 let floorList = null;
 
+function setPreviewVisible(visible) {
+  if (!previewContainer) return;
+  previewContainer.classList.toggle('visible', Boolean(visible));
+}
+
 function loadFloorplanHotspotsFromStorage() {
   try {
     const raw = localStorage.getItem(FLOORPLAN_HOTSPOTS_KEY);
@@ -98,7 +103,7 @@ function ensurePreviewElements() {
   previewImg = previewContainer.querySelector('img');
   previewHotspotLayer = previewContainer.querySelector('.floorplan-hotspot-layer');
 
-  previewContainer.style.display = 'none';
+  setPreviewVisible(false);
 
   previewContainer.addEventListener('click', (e) => {
     if (e.target && e.target.closest && e.target.closest('.floorplan-hotspot-pin')) {
@@ -152,9 +157,7 @@ function closeModal() {
   if (!modalOverlay) return;
   modalOverlay.classList.remove('visible');
   document.body.classList.remove('floorplan-modal-open');
-  if (previewContainer) {
-    previewContainer.style.display = selectedFloorplan ? 'block' : 'none';
-  }
+  setPreviewVisible(Boolean(selectedFloorplan));
 }
 
 function openModalFor(filename) {
@@ -173,9 +176,7 @@ function openModalFor(filename) {
     modalTitleEl.textContent = displayName;
   }
   // When entering Expanded Display, hide the Rendered Display (minimized preview).
-  if (previewContainer) {
-    previewContainer.style.display = 'none';
-  }
+  setPreviewVisible(false);
   modalOverlay.classList.add('visible');
   document.body.classList.add('floorplan-modal-open');
   renderFloorplanHotspots();
@@ -186,7 +187,7 @@ function showPreview(filename) {
   if (!previewImg) return;
   const base = getFloorplanBase();
   previewImg.src = `${base}/${encodeURIComponent(filename)}`;
-  previewContainer.style.display = 'block';
+  setPreviewVisible(true);
   renderRenderedHotspots();
 }
 
@@ -272,7 +273,7 @@ async function loadFloorplans() {
     });
     if (!files || files.length === 0) {
       selectedFloorplan = null;
-      if (previewContainer) previewContainer.style.display = 'none';
+      setPreviewVisible(false);
       floorList.innerHTML = "<li class='active' style='text-align: center'>No floor plan uploaded</li>";
     }
   } catch (e) {

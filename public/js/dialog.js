@@ -88,6 +88,14 @@ const DIALOG_ACTIONS_ID = 'app-dialog-actions';
 
 /** @type {HTMLElement | null} Element that had focus before the dialog opened (for restore on close). */
 let previousActiveElement = null;
+let autoDismissTimerId = null;
+
+function clearAutoDismissTimer() {
+  if (autoDismissTimerId !== null) {
+    window.clearTimeout(autoDismissTimerId);
+    autoDismissTimerId = null;
+  }
+}
 
 function getOrCreateDialog() {
   let overlay = document.getElementById(DIALOG_OVERLAY_ID);
@@ -140,6 +148,7 @@ function getOrCreateDialog() {
 }
 
 function showOverlay() {
+  clearAutoDismissTimer();
   previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const overlay = getOrCreateDialog();
   overlay.removeAttribute('aria-hidden'); // dialog is visible and will receive focus; do not hide from a11y
@@ -147,6 +156,7 @@ function showOverlay() {
 }
 
 function hideOverlay() {
+  clearAutoDismissTimer();
   const overlay = document.getElementById(DIALOG_OVERLAY_ID);
   if (overlay) {
     overlay.classList.remove('app-dialog-visible');
@@ -217,6 +227,36 @@ export function showAlert(message, title = 'Notice') {
 
     showOverlay();
     okBtn.focus();
+  });
+}
+
+/**
+ * Show an alert-style dialog that automatically closes after `durationMs`.
+ * Returns a Promise that resolves when the dialog is dismissed.
+ */
+export function showTimedAlert(message, title = 'Notice', durationMs = 100) {
+  return new Promise((resolve) => {
+    getOrCreateDialog();
+    const titleEl = getTitle();
+    const messageEl = getMessage();
+    const inputWrap = getInput().closest('.app-dialog-input-wrap');
+    const selectWrap = getSelectWrap();
+    const actionsEl = getActions();
+
+    titleEl.textContent = title;
+    titleEl.style.display = 'block';
+    messageEl.textContent = message;
+    messageEl.style.display = 'block';
+    inputWrap.style.display = 'none';
+    selectWrap.style.display = 'none';
+    actionsEl.innerHTML = '';
+
+    showOverlay();
+    autoDismissTimerId = window.setTimeout(() => {
+      autoDismissTimerId = null;
+      hideOverlay();
+      resolve();
+    }, Math.max(0, Number(durationMs) || 0));
   });
 }
 

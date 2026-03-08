@@ -1,5 +1,5 @@
 import { getSelectedImageName, saveInitialViewForCurrentImage } from '../marzipano-viewer.js';
-import { showAlert } from '../dialog.js';
+import { showAlert, showTimedAlert } from '../dialog.js';
 
 const initialViewBtnEl = document.getElementById('pano-initial-view-btn');
 
@@ -14,7 +14,7 @@ export function initInitialView() {
     }
     try {
       await saveInitialViewForCurrentImage();
-      await showAlert('Initial view saved for this panorama.', 'Set initial view');
+      await showTimedAlert('Initial view saved for this panorama.', 'Set initial view', 500);
     } catch (e) {
       console.error('Error saving initial view', e);
       await showAlert('Could not save the initial view. Please try again.', 'Set initial view');

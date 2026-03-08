@@ -1,5 +1,14 @@
 import { appendProjectParams, getFloorplanBase, getProjectId } from '../project-context.js';
-import { showAlert, showConfirm, showPrompt, showSelectWithPreview } from '../dialog.js';
+import {
+  showAlert,
+  showConfirm,
+  showPrompt,
+  showSelectWithPreview,
+  showTimedAlert,
+  showProgressDialog,
+  hideProgressDialog,
+  updateProgressDialog,
+} from '../dialog.js';
 import { getImageList, loadPanorama, registerOnSceneLoad, getSelectedImageName } from '../marzipano-viewer.js';
 
 function selectEl(id) {
@@ -10,6 +19,7 @@ function selectEl(id) {
 export const floorplanApi = {
   updateForRenamedPano(_oldName, _newName) {},
   cleanupForDeletedPano(_deletedName) {},
+  reloadList() {},
 };
 
 export function initFloorplans() {
@@ -185,6 +195,41 @@ export function initFloorplans() {
   const hotspotBtn = modalOverlay.querySelector('#floorplan-hotspot-btn');
 
   let hotspotPlaceMode = false;
+  const floorplanCacheBustByFile = new Map();
+
+  function setPreviewVisible(visible) {
+    if (!previewContainer) return;
+    previewContainer.classList.toggle('visible', Boolean(visible));
+  }
+
+  function getFloorplanTitleFromList(filename) {
+    if (!floorList || !filename) return '';
+    const items = Array.from(floorList.querySelectorAll('li[data-filename]'));
+    const match = items.find((li) => li.dataset && li.dataset.filename === filename);
+    if (!match) return '';
+    return (match.textContent || '').trim();
+  }
+
+  function getFloorplanImageSrc(filename) {
+    const base = getFloorplanBase();
+    const encoded = encodeURIComponent(filename);
+    const token = floorplanCacheBustByFile.get(filename);
+    if (token === undefined || token === null) return `${base}/${encoded}`;
+    return `${base}/${encoded}?v=${encodeURIComponent(String(token))}`;
+  }
+
+  function bumpFloorplanImageCache(filename) {
+    if (!filename) return;
+    floorplanCacheBustByFile.set(filename, Date.now());
+  }
+
+  function moveFloorplanImageCache(oldFilename, newFilename) {
+    if (!oldFilename || !newFilename || oldFilename === newFilename) return;
+    if (!floorplanCacheBustByFile.has(oldFilename)) return;
+    const token = floorplanCacheBustByFile.get(oldFilename);
+    floorplanCacheBustByFile.delete(oldFilename);
+    floorplanCacheBustByFile.set(newFilename, token);
+  }
 
   function closeModal() {
     modalOverlay.classList.remove('visible');
@@ -192,9 +237,7 @@ export function initFloorplans() {
     hotspotPlaceMode = false;
     if (hotspotBtn) hotspotBtn.classList.remove('active');
     // When leaving Expanded Display, return to Rendered Display if a floor plan is selected.
-    if (previewContainer) {
-      previewContainer.style.display = (selectedFloorplan && isFloorTabActive()) ? 'block' : 'none';
-    }
+    setPreviewVisible(selectedFloorplan && isFloorTabActive());
   }
 
   modalOverlay.addEventListener('click', (e) => {
@@ -205,19 +248,21 @@ export function initFloorplans() {
 
   function openModalFor(filename) {
     if (!filename || !previewImg || !modalImg) return;
-    const base = getFloorplanBase();
-    const src = `${base}/${encodeURIComponent(filename)}`;
+    const src = getFloorplanImageSrc(filename);
     modalImg.src = src;
     modalImg.alt = filename;
     if (modalTitleEl) {
-      const dot = filename.lastIndexOf('.');
-      const displayName = dot > 0 ? filename.substring(0, dot) : filename;
-      modalTitleEl.textContent = displayName;
+      const listTitle = getFloorplanTitleFromList(filename);
+      if (listTitle) {
+        modalTitleEl.textContent = listTitle;
+      } else {
+        const dot = filename.lastIndexOf('.');
+        const displayName = dot > 0 ? filename.substring(0, dot) : filename;
+        modalTitleEl.textContent = displayName;
+      }
     }
     // When entering Expanded Display, hide the Rendered Display (minimized preview).
-    if (previewContainer) {
-      previewContainer.style.display = 'none';
-    }
+    setPreviewVisible(false);
     modalOverlay.classList.add('visible');
     document.body.classList.add('floorplan-modal-open');
     // Re-render hotspots whenever modal opens
@@ -230,7 +275,7 @@ export function initFloorplans() {
     panoList.style.display = 'block';
     floorList.style.display = 'none';
     // Hide floorplan preview when switching back to panoramic scenes
-    previewContainer.style.display = 'none';
+    setPreviewVisible(false);
   }
 
   function showFloorplans() {
@@ -238,7 +283,7 @@ export function initFloorplans() {
     floorTab.classList.add('active-tab');
     panoList.style.display = 'none';
     floorList.style.display = 'block';
-    if (selectedFloorplan) previewContainer.style.display = 'block';
+    setPreviewVisible(Boolean(selectedFloorplan));
   }
 
   panoTab.addEventListener('click', showPanos);
@@ -253,9 +298,8 @@ export function initFloorplans() {
 
   function showPreview(filename) {
     if (!previewImg) return;
-    const base = getFloorplanBase();
-    previewImg.src = `${base}/${encodeURIComponent(filename)}`;
-    previewContainer.style.display = isFloorTabActive() ? 'block' : 'none';
+    previewImg.src = getFloorplanImageSrc(filename);
+    setPreviewVisible(isFloorTabActive());
     renderRenderedHotspots();
   }
 
@@ -352,7 +396,7 @@ export function initFloorplans() {
       });
       if (!files || files.length === 0) {
         selectedFloorplan = null;
-        previewContainer.style.display = 'none';
+        setPreviewVisible(false);
         const emptyLi = document.createElement('li');
         emptyLi.className = 'active';
         emptyLi.style.textAlign = 'center';
@@ -370,6 +414,10 @@ export function initFloorplans() {
       console.error('Error loading floorplans', e);
     }
   }
+
+  floorplanApi.reloadList = function () {
+    return loadFloorplans();
+  };
 
   // Highlight hotspot when panorama loads in viewer (admin)
   try {
@@ -391,18 +439,40 @@ export function initFloorplans() {
       if (!files.length) return;
       const formData = new FormData();
       files.forEach((file) => formData.append('floorplan', file));
+      showProgressDialog('Uploading Floor Plan images(s)');
       try {
-        const res = await fetch(appendProjectParams('/upload-floorplan'), {
-          method: 'POST',
-          body: formData,
+        const data = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', appendProjectParams('/upload-floorplan'));
+          xhr.upload.onprogress = (e) => {
+            if (!e.lengthComputable || e.total <= 0) return;
+            const percent = Math.round((e.loaded / e.total) * 100);
+            updateProgressDialog(percent);
+          };
+          xhr.onload = () => {
+            try {
+              const json = JSON.parse(xhr.responseText || '{}');
+              resolve({ ok: xhr.status >= 200 && xhr.status < 300, json });
+            } catch (err) {
+              reject(err);
+            }
+          };
+          xhr.onerror = () => reject(new Error('Network error'));
+          xhr.send(formData);
         });
-        if (!res.ok) {
-          console.error('Failed to upload floorplans');
+        hideProgressDialog();
+        if (!data.ok || !data.json || !data.json.success) {
+          await showAlert(
+            (data.json && data.json.message) || 'Failed to upload floor plans.',
+            'Upload floor plan'
+          );
         } else {
           await loadFloorplans();
         }
       } catch (e) {
+        hideProgressDialog();
         console.error('Error uploading floorplans', e);
+        await showAlert('Error uploading floor plans: ' + e, 'Upload floor plan');
       } finally {
         addFloorInput.value = '';
       }
@@ -561,6 +631,7 @@ export function initFloorplans() {
         await showAlert('Please select a floor plan to update.', 'Update floor plan');
         return;
       }
+      const floorplanToUpdate = selectedFloorplan;
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
@@ -571,23 +642,67 @@ export function initFloorplans() {
           document.body.removeChild(input);
           return;
         }
+        const confirmed = await showConfirm(
+          `Are you sure you want to update "${floorplanToUpdate}"?`,
+          'Update floor plan'
+        );
+        if (!confirmed) {
+          document.body.removeChild(input);
+          return;
+        }
         const formData = new FormData();
         formData.append('floorplan', file);
-        formData.append('oldFilename', selectedFloorplan);
+        formData.append('oldFilename', floorplanToUpdate);
+        showProgressDialog('Updating floor plan image...');
         try {
-          const res = await fetch(appendProjectParams('/upload-floorplan/update'), {
-            method: 'PUT',
-            body: formData,
+          const response = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', appendProjectParams('/upload-floorplan/update'));
+            xhr.upload.onprogress = (e) => {
+              if (!e.lengthComputable || e.total <= 0) return;
+              const percent = Math.round((e.loaded / e.total) * 100);
+              updateProgressDialog(percent);
+            };
+            xhr.onload = () => {
+              try {
+                const json = JSON.parse(xhr.responseText || '{}');
+                resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, json });
+              } catch (err) {
+                reject(err);
+              }
+            };
+            xhr.onerror = () => reject(new Error('Network error'));
+            xhr.send(formData);
           });
-          const data = await res.json();
-          if (!res.ok || !data.success) {
-            await showAlert('Error updating floor plan: ' + (data && data.message ? data.message : res.status), 'Update floor plan');
+          hideProgressDialog();
+          const data = response.json;
+          if (!response.ok || !data.success) {
+            await showAlert('Error updating floor plan: ' + (data && data.message ? data.message : response.status), 'Update floor plan');
           } else {
+            const updatedFilename = (() => {
+              const fromNew = data && typeof data.newFilename === 'string' ? data.newFilename.trim() : '';
+              if (fromNew) return fromNew;
+              const fromAlias = data && typeof data.filename === 'string' ? data.filename.trim() : '';
+              if (fromAlias) return fromAlias;
+              return floorplanToUpdate;
+            })();
+
+            if (updatedFilename !== floorplanToUpdate && floorplanHotspotsByFile.has(floorplanToUpdate)) {
+              const list = floorplanHotspotsByFile.get(floorplanToUpdate);
+              floorplanHotspotsByFile.delete(floorplanToUpdate);
+              floorplanHotspotsByFile.set(updatedFilename, list);
+              saveFloorplanHotspotsToStorage();
+            }
+            moveFloorplanImageCache(floorplanToUpdate, updatedFilename);
+            bumpFloorplanImageCache(updatedFilename);
+            selectedFloorplan = updatedFilename;
             await loadFloorplans();
-            onFloorplanClick(selectedFloorplan);
-            openModalFor(selectedFloorplan);
+            onFloorplanClick(updatedFilename);
+            openModalFor(updatedFilename);
+            await showTimedAlert('Floor plan updated successfully.', 'Update floor plan', 800);
           }
         } catch (e) {
+          hideProgressDialog();
           await showAlert('Error updating floor plan: ' + e, 'Update floor plan');
         } finally {
           document.body.removeChild(input);
@@ -631,10 +746,12 @@ export function initFloorplans() {
             floorplanHotspotsByFile.set(newFileName, list);
             saveFloorplanHotspotsToStorage();
           }
+          moveFloorplanImageCache(selectedFloorplan, newFileName);
           selectedFloorplan = newFileName;
           await loadFloorplans();
           onFloorplanClick(selectedFloorplan);
           openModalFor(selectedFloorplan);
+          await showTimedAlert('Floor plan renamed successfully.', 'Rename floor plan', 800);
         }
       } catch (e) {
         await showAlert('Error renaming floor plan: ' + e, 'Rename floor plan');
@@ -650,22 +767,30 @@ export function initFloorplans() {
       }
       const confirmed = await showConfirm(`Are you sure you want to delete "${selectedFloorplan}"?`, 'Delete floor plan');
       if (!confirmed) return;
+      showProgressDialog('Deleting floor plan image...');
+      updateProgressDialog(20);
       try {
         const res = await fetch(appendProjectParams(`/api/floorplans/${encodeURIComponent(selectedFloorplan)}`), {
           method: 'DELETE',
         });
+        updateProgressDialog(90);
         const data = await res.json();
+        updateProgressDialog(100);
+        hideProgressDialog();
         if (!res.ok || !data.success) {
           await showAlert('Error deleting floor plan: ' + (data && data.message ? data.message : res.status), 'Delete floor plan');
         } else {
+          floorplanCacheBustByFile.delete(selectedFloorplan);
           floorplanHotspotsByFile.delete(selectedFloorplan);
           saveFloorplanHotspotsToStorage();
           selectedFloorplan = null;
           closeModal();
           await loadFloorplans();
-          previewContainer.style.display = 'none';
+          setPreviewVisible(false);
+          await showTimedAlert('Floor plan deleted successfully.', 'Delete floor plan', 800);
         }
       } catch (e) {
+        hideProgressDialog();
         await showAlert('Error deleting floor plan: ' + e, 'Delete floor plan');
       }
     });

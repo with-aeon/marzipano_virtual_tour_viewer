@@ -1,5 +1,5 @@
 import { cleanupHotspotsForDeletedImages } from './hotspots.js';
-import { showAlert, showConfirm } from '../dialog.js';
+import { showAlert, showConfirm, showTimedAlert } from '../dialog.js';
 import { appendProjectParams } from '../project-context.js';
 
 const deleteBtnEl = document.getElementById('pano-delete-btn');
@@ -47,5 +47,7 @@ async function handleDelete() {
 
   if (errors.length > 0) {
     await showAlert('Some images could not be deleted:\n' + errors.join('\n'), 'Delete');
+  } else {
+    await showTimedAlert('Panorama image deleted successfully.', 'Delete', 500);
   }
 }

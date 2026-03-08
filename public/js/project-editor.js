@@ -90,5 +90,8 @@ if (!getProjectId()) {
     socket.on('initial-views:changed', async (payload) => {
       try { await reloadInitialViews(); } catch (e) {}
     });
+    socket.on('floorplans:order', () => {
+      try { floorplanApi.reloadList(); } catch (e) {}
+    });
   } catch (e) {}
 }

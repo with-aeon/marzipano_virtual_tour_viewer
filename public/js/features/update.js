@@ -1,6 +1,6 @@
 import { getSelectedImageName, loadImages, loadPanorama, clearCurrentPath } from '../marzipano-viewer.js';
 import { cleanupHotspotsForDeletedImages } from './hotspots.js';
-import { showAlert, showProgressDialog, hideProgressDialog, updateProgressDialog, setProgressDialogMessage } from '../dialog.js';
+import { showAlert, showTimedAlert, showProgressDialog, hideProgressDialog, updateProgressDialog, setProgressDialogMessage } from '../dialog.js';
 import { appendProjectParams } from '../project-context.js';
 
 const updateBtnEl = document.getElementById('pano-update-btn');
@@ -89,6 +89,7 @@ async function handleUpdate() {
               hideProgressDialog();
               clearCurrentPath();
               await loadImages(cleanupHotspotsForDeletedImages);
+              await showTimedAlert('Panorama image updated successfully.', 'Update', 500);
               return true; // Done
             } else {
               const p = typeof job.percent === 'number' ? job.percent : 0;

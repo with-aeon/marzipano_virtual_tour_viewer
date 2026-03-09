@@ -83,6 +83,26 @@ function setListItemFilename(li, filename) {
   if (nameEl) nameEl.textContent = filename;
 }
 
+function updateListItemActionIcons(li) {
+  if (!li) return;
+  const isActive = li.classList.contains('active');
+  const iconByAction = {
+    update: isActive ? 'assets/icons/update-w.png' : 'assets/icons/update.png',
+    rename: isActive ? 'assets/icons/rename-w.png' : 'assets/icons/rename.png',
+    delete: isActive ? 'assets/icons/delete-w.png' : 'assets/icons/delete1.png'
+  };
+  li.querySelectorAll('.pano-item-action-btn').forEach((btn) => {
+    const action = btn.dataset.panoAction;
+    const img = btn.querySelector('img');
+    if (!img || !iconByAction[action]) return;
+    img.src = iconByAction[action];
+  });
+}
+
+function refreshAllListActionIcons() {
+  document.querySelectorAll('#pano-image-list li').forEach((li) => updateListItemActionIcons(li));
+}
+
 function syncMultiSelectionClasses() {
   document.querySelectorAll('#pano-image-list li').forEach((li) => {
     const selected = deleteSelectionMode && multiSelectedImageNames.has(li.dataset.filename);
@@ -127,6 +147,7 @@ export async function loadPanorama(imageName) {
     document.querySelectorAll('#pano-image-list li').forEach(li => li.classList.remove('active'));
     const sameLi = Array.from(document.querySelectorAll('#pano-image-list li')).find(li => li.dataset.filename === imageName);
     if (sameLi) sameLi.classList.add('active');
+    refreshAllListActionIcons();
     return;
   }
   currentImagePath = imagePath;
@@ -191,6 +212,7 @@ export async function loadPanorama(imageName) {
   if (activeLi) {
     activeLi.classList.add('active');
   }
+  refreshAllListActionIcons();
 }
 
 // Load and display list of images
@@ -249,9 +271,9 @@ export async function loadImages(onImagesLoaded) {
         actionsEl.className = 'pano-item-actions';
 
         const actionButtons = [
-          { action: 'update', icon: 'assets/update.png', alt: 'Update image' },
-          { action: 'rename', icon: 'assets/rename.png', alt: 'Rename image' },
-          { action: 'delete', icon: 'assets/icons/delete.png', alt: 'Delete image' }
+          { action: 'update', icon: 'assets/icons/update.png', alt: 'Update' },
+          { action: 'rename', icon: 'assets/icons/rename.png', alt: 'Rename' },
+          { action: 'delete', icon: 'assets/icons/delete1.png', alt: 'Delete' }
         ];
 
         actionButtons.forEach(({ action, icon, alt }) => {
@@ -278,6 +300,7 @@ export async function loadImages(onImagesLoaded) {
       if (multiSelectedImageNames.has(filename)) {
         li.classList.add('multi-selected');
       }
+      updateListItemActionIcons(li);
 
       li.addEventListener('click', async (ev) => {
         if (ev.target.closest('.pano-item-actions')) return;
@@ -375,6 +398,7 @@ export async function loadImages(onImagesLoaded) {
           const activeLi = Array.from(document.querySelectorAll('#pano-image-list li'))
             .find(li => li.dataset.filename === selectedImageName);
           if (activeLi) activeLi.classList.add('active');
+          refreshAllListActionIcons();
 
           // Persist new order to server
           try {

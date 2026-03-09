@@ -251,7 +251,7 @@ export async function loadImages(onImagesLoaded) {
         const actionButtons = [
           { action: 'update', icon: 'assets/update.png', alt: 'Update image' },
           { action: 'rename', icon: 'assets/rename.png', alt: 'Rename image' },
-          { action: 'delete', icon: 'assets/icons/delete1.png', alt: 'Delete image' }
+          { action: 'delete', icon: 'assets/icons/delete.png', alt: 'Delete image' }
         ];
 
         actionButtons.forEach(({ action, icon, alt }) => {

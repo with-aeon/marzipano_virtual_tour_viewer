@@ -298,13 +298,13 @@ const floorplanUpload = multer({
 
 async function listUploadedImages(uploadsDir) {
   const files = await fs.promises.readdir(uploadsDir);
-  return files.filter(file => /\.(jpg|jpeg|png|gif|webp)$/i.test(file));
+  return files.filter(file => /\.(jpg|jpeg|png|gif|webp|jfif)$/i.test(file));
 }
 
 async function listFloorplanImages(floorplansDir) {
   try {
     const files = await fs.promises.readdir(floorplansDir);
-    return files.filter(file => /\.(jpg|jpeg|png|gif|webp)$/i.test(file));
+    return files.filter(file => /\.(jpg|jpeg|png|gif|webp|jfif)$/i.test(file));
   } catch (e) {
     if (e.code !== 'ENOENT') console.error('Error reading floorplans dir:', e);
     return [];
@@ -326,6 +326,38 @@ function writeFloorplanOrder(floorplanOrderPath, order) {
   const dir = path.dirname(floorplanOrderPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(floorplanOrderPath, JSON.stringify(order, null, 2), 'utf8');
+}
+
+function readFloorplanHotspots(floorplanHotspotsPath) {
+  try {
+    const raw = fs.readFileSync(floorplanHotspotsPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (e) {
+    if (e.code !== 'ENOENT') console.error('Error reading floor plan hotspots:', e);
+    return {};
+  }
+}
+
+function writeFloorplanHotspots(floorplanHotspotsPath, hotspots) {
+  const dir = path.dirname(floorplanHotspotsPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(floorplanHotspotsPath, JSON.stringify(hotspots, null, 2), 'utf8');
+}
+
+function clearFloorplanHotspotsForFilenames(paths, filenames) {
+  const names = Array.from(new Set((filenames || []).filter(Boolean)));
+  if (names.length === 0) return { changed: false, hotspots: null };
+  const hotspots = readFloorplanHotspots(paths.floorplanHotspotsPath);
+  let changed = false;
+  names.forEach((name) => {
+    if (Object.prototype.hasOwnProperty.call(hotspots, name)) {
+      delete hotspots[name];
+      changed = true;
+    }
+  });
+  if (changed) writeFloorplanHotspots(paths.floorplanHotspotsPath, hotspots);
+  return { changed, hotspots };
 }
 
 function floorplanOrderReplace(paths, oldFilename, newFilename) {
@@ -676,6 +708,15 @@ app.put('/upload-floorplan/update', floorplanUpload.single('floorplan'), async (
   }
   const newFilename = req.file.filename;
   try {
+    const hotspotCleanup = clearFloorplanHotspotsForFilenames(paths, [oldFilename, newFilename]);
+    if (hotspotCleanup.changed) {
+      try {
+        io.to(`project:${paths.projectId}`).emit('floorplan-hotspots:changed', hotspotCleanup.hotspots);
+      } catch (e) {
+        console.error('Socket emit error:', e);
+      }
+    }
+
     if (oldFilename === newFilename) {
       return res.json({
         success: true,
@@ -783,6 +824,9 @@ app.get('/api/floorplans', async (req, res) => {
   const paths = resolvePaths(req);
   if (!paths) return res.status(400).json({ error: 'Project required' });
   try {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
     const files = await getOrderedFloorplanFilenames(paths);
     res.json(files);
   } catch (e) {

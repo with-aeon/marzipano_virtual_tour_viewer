@@ -329,7 +329,7 @@ export function initFloorplans() {
 
   async function loadFloorplans() {
     try {
-      const res = await fetch(appendProjectParams('/api/floorplans'));
+      const res = await fetch(appendProjectParams('/api/floorplans'), { cache: 'no-store' });
       if (!res.ok) return;
       const files = await res.json();
       clearFloorplanItems();
@@ -689,11 +689,20 @@ export function initFloorplans() {
               return floorplanToUpdate;
             })();
 
-            if (updatedFilename !== floorplanToUpdate && floorplanHotspotsByFile.has(floorplanToUpdate)) {
-              const list = floorplanHotspotsByFile.get(floorplanToUpdate);
+            let hotspotsChanged = false;
+            if (floorplanHotspotsByFile.has(floorplanToUpdate)) {
               floorplanHotspotsByFile.delete(floorplanToUpdate);
-              floorplanHotspotsByFile.set(updatedFilename, list);
+              hotspotsChanged = true;
+            }
+            if (updatedFilename !== floorplanToUpdate && floorplanHotspotsByFile.has(updatedFilename)) {
+              floorplanHotspotsByFile.delete(updatedFilename);
+              hotspotsChanged = true;
+            }
+            if (hotspotsChanged) {
+              selectedHotspotId = null;
               saveFloorplanHotspotsToStorage();
+              renderFloorplanHotspots();
+              renderRenderedHotspots();
             }
             moveFloorplanImageCache(floorplanToUpdate, updatedFilename);
             bumpFloorplanImageCache(updatedFilename);

@@ -139,6 +139,7 @@
 }
 
 #pano-upload-btn,
+#pano-delete-selection-btn,
 #pano-hotspot-btn,
 #pano-blur-btn,
 #pano-blur-add-btn,
@@ -158,6 +159,13 @@
 }
 #pano-upload-btn {
     background-color: rgb(0, 0, 193);
+}
+#pano-delete-selection-btn {
+    background-color: rgb(198, 0, 0);
+    color: #fff;
+}
+#pano-delete-selection-btn.active {
+    background-color: rgb(130, 0, 0);
 }
 #pano-blur-btn {
     background-color: rgb(79, 120, 141);
@@ -239,6 +247,14 @@
 }
 #pano-image-list li.active {
     background-color: #115272;
+    color: #fff;
+}
+#pano-image-list li.multi-selected:not(.active) {
+    background-color: #d43f3f;
+    color: #fff;
+}
+#pano-image-list li.multi-selected.active {
+    background-color: #b71c1c;
     color: #fff;
 }
 
@@ -614,6 +630,7 @@ body.floorplan-modal-open #pano-panel {
   transition: transform 0.5s;
 }
 #pano-upload-btn:hover,
+#pano-delete-selection-btn:hover,
 #pano-hotspot-btn:hover,
 #pano-blur-btn:hover,
 #pano-blur-add-btn:hover,

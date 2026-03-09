@@ -13,6 +13,9 @@ let viewer = null;
 let currentScene = null;
 let currentImagePath = null;
 let selectedImageName = null;
+let multiSelectedImageNames = new Set();
+let lastMultiSelectIndex = null;
+let deleteSelectionMode = false;
 /** @type {Array<() => void>} Callbacks run when a scene has finished loading (after switchTo). */
 let onSceneLoadCallbacks = [];
 let projectName = null;
@@ -78,6 +81,13 @@ function setListItemFilename(li, filename) {
   li.dataset.filename = filename;
   const nameEl = li.querySelector('.pano-item-name');
   if (nameEl) nameEl.textContent = filename;
+}
+
+function syncMultiSelectionClasses() {
+  document.querySelectorAll('#pano-image-list li').forEach((li) => {
+    const selected = deleteSelectionMode && multiSelectedImageNames.has(li.dataset.filename);
+    li.classList.toggle('multi-selected', selected);
+  });
 }
 
 function updateHeaderText() {
@@ -190,6 +200,12 @@ export async function loadImages(onImagesLoaded) {
     const res = await fetch(appendProjectParams("/api/panos"));
     const panos = await res.json();
     const fileList = Array.isArray(panos) ? panos.map(p => p.filename) : [];
+    multiSelectedImageNames = new Set(
+      Array.from(multiSelectedImageNames).filter((name) => fileList.includes(name))
+    );
+    if (lastMultiSelectIndex !== null && (lastMultiSelectIndex < 0 || lastMultiSelectIndex >= fileList.length)) {
+      lastMultiSelectIndex = null;
+    }
     // Ensure initial views are loaded once we know the project context is valid.
     await ensureInitialViewsLoaded();
     if (typeof onImagesLoaded === 'function') onImagesLoaded(fileList);
@@ -259,7 +275,51 @@ export async function loadImages(onImagesLoaded) {
 
       li.draggable = isAdmin;
       setListItemFilename(li, filename);
-      li.onclick = () => loadPanorama(li.dataset.filename);
+      if (multiSelectedImageNames.has(filename)) {
+        li.classList.add('multi-selected');
+      }
+
+      li.addEventListener('click', async (ev) => {
+        if (ev.target.closest('.pano-item-actions')) return;
+
+        if (!isAdmin) {
+          await loadPanorama(li.dataset.filename);
+          return;
+        }
+
+        const allItems = Array.from(document.querySelectorAll('#pano-image-list li'));
+        const currentIndex = allItems.indexOf(li);
+        const isToggleSelection = deleteSelectionMode && (ev.ctrlKey || ev.metaKey);
+        const isRangeSelection = deleteSelectionMode && ev.shiftKey && lastMultiSelectIndex !== null;
+
+        if (isRangeSelection) {
+          const start = Math.min(lastMultiSelectIndex, currentIndex);
+          const end = Math.max(lastMultiSelectIndex, currentIndex);
+          multiSelectedImageNames.clear();
+          for (let i = start; i <= end; i += 1) {
+            const filename = allItems[i]?.dataset?.filename;
+            if (filename) multiSelectedImageNames.add(filename);
+          }
+          syncMultiSelectionClasses();
+        } else if (isToggleSelection) {
+          const filename = li.dataset.filename;
+          if (multiSelectedImageNames.has(filename)) {
+            multiSelectedImageNames.delete(filename);
+          } else {
+            multiSelectedImageNames.add(filename);
+          }
+          li.classList.toggle('multi-selected', multiSelectedImageNames.has(filename));
+          lastMultiSelectIndex = currentIndex;
+        } else if (!deleteSelectionMode) {
+          multiSelectedImageNames.clear();
+          syncMultiSelectionClasses();
+          lastMultiSelectIndex = currentIndex;
+        } else {
+          lastMultiSelectIndex = currentIndex;
+        }
+
+        await loadPanorama(li.dataset.filename);
+      });
 
       // Only enable drag/drop handlers in admin UI
       if (isAdmin) {
@@ -294,7 +354,7 @@ export async function loadImages(onImagesLoaded) {
           const targetFilename = li.dataset.filename;
           if (!sourceFilename || sourceFilename === targetFilename) return;
 
-          // Find the two list items and swap their filenames and onclick handlers
+          // Find the two list items and swap their filenames
           const allItems = Array.from(document.querySelectorAll('#pano-image-list li'));
           const srcLi = allItems.find(x => x.dataset.filename === sourceFilename);
           const tgtLi = allItems.find(x => x.dataset.filename === targetFilename);
@@ -305,13 +365,10 @@ export async function loadImages(onImagesLoaded) {
           setListItemFilename(srcLi, tgtLi.dataset.filename);
           setListItemFilename(tgtLi, tmp);
 
-          // Reassign onclick handlers to use updated filenames
-          srcLi.onclick = () => loadPanorama(srcLi.dataset.filename);
-          tgtLi.onclick = () => loadPanorama(tgtLi.dataset.filename);
-
           // Maintain active state if selection moved
           if (selectedImageName === sourceFilename) selectedImageName = targetFilename;
           else if (selectedImageName === targetFilename) selectedImageName = sourceFilename;
+          syncMultiSelectionClasses();
 
           // Update visual active classes
           document.querySelectorAll('#pano-image-list li').forEach(li => li.classList.remove('active'));
@@ -373,6 +430,8 @@ export async function loadImages(onImagesLoaded) {
       currentScene = null;
       currentImagePath = null;
       selectedImageName = null;
+      multiSelectedImageNames.clear();
+      lastMultiSelectIndex = null;
       viewer = null;
       updateHeaderText();
       if (panoViewerEl) {
@@ -393,6 +452,29 @@ export function getSelectedImageName() {
 export function clearSelection() {
   currentImagePath = null;
   selectedImageName = null;
+}
+
+export function getMultiSelectedImageNames() {
+  return Array.from(multiSelectedImageNames);
+}
+
+export function clearMultiSelection() {
+  multiSelectedImageNames.clear();
+  lastMultiSelectIndex = null;
+  syncMultiSelectionClasses();
+}
+
+export function setDeleteSelectionMode(enabled) {
+  deleteSelectionMode = !!enabled;
+  if (!deleteSelectionMode) {
+    multiSelectedImageNames.clear();
+    lastMultiSelectIndex = null;
+  }
+  syncMultiSelectionClasses();
+}
+
+export function isDeleteSelectionMode() {
+  return deleteSelectionMode;
 }
 
 export function clearCurrentPath() {

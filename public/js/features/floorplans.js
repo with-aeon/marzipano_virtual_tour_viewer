@@ -176,9 +176,6 @@ export function initFloorplans() {
         </div>
       </div>
       <div class="floorplan-modal-actions">
-        <button type="button" id="floorplan-update-btn" class="floorplan-action-btn floorplan-update">Update</button>
-        <button type="button" id="floorplan-rename-btn" class="floorplan-action-btn floorplan-rename">Rename</button>
-        <button type="button" id="floorplan-delete-btn" class="floorplan-action-btn floorplan-delete">Delete</button>
         <button type="button" id="floorplan-hotspot-btn" class="floorplan-action-btn floorplan-hotspot">Hotspot</button>
       </div>
     </div>
@@ -189,9 +186,6 @@ export function initFloorplans() {
   const modalEl = modalOverlay.querySelector('.floorplan-modal');
   const modalTitleEl = modalOverlay.querySelector('#floorplan-modal-title');
   const modalHotspotLayer = modalOverlay.querySelector('.floorplan-hotspot-layer[data-layer="expanded"]');
-  const updateBtn = modalOverlay.querySelector('#floorplan-update-btn');
-  const renameBtn = modalOverlay.querySelector('#floorplan-rename-btn');
-  const deleteBtn = modalOverlay.querySelector('#floorplan-delete-btn');
   const hotspotBtn = modalOverlay.querySelector('#floorplan-hotspot-btn');
 
   let hotspotPlaceMode = false;
@@ -202,12 +196,33 @@ export function initFloorplans() {
     previewContainer.classList.toggle('visible', Boolean(visible));
   }
 
+  function updateFloorplanListItemActionIcons(li) {
+    if (!li) return;
+    const isActive = li.classList.contains('active');
+    const iconByAction = {
+      update: isActive ? 'assets/icons/update-w.png' : 'assets/icons/update.png',
+      rename: isActive ? 'assets/icons/rename-w.png' : 'assets/icons/rename.png',
+      delete: isActive ? 'assets/icons/delete-w.png' : 'assets/icons/delete1.png',
+    };
+    li.querySelectorAll('.floorplan-item-action-btn').forEach((btn) => {
+      const action = btn.dataset.floorplanAction;
+      const img = btn.querySelector('img');
+      if (!img || !iconByAction[action]) return;
+      img.src = iconByAction[action];
+    });
+  }
+
+  function refreshAllFloorplanListActionIcons() {
+    floorList.querySelectorAll('li[data-filename]').forEach((li) => updateFloorplanListItemActionIcons(li));
+  }
+
   function getFloorplanTitleFromList(filename) {
     if (!floorList || !filename) return '';
     const items = Array.from(floorList.querySelectorAll('li[data-filename]'));
     const match = items.find((li) => li.dataset && li.dataset.filename === filename);
     if (!match) return '';
-    return (match.textContent || '').trim();
+    const nameEl = match.querySelector('.floorplan-item-name');
+    return (nameEl ? nameEl.textContent : match.textContent || '').trim();
   }
 
   function getFloorplanImageSrc(filename) {
@@ -311,6 +326,7 @@ export function initFloorplans() {
       } else {
         li.classList.remove('active');
       }
+      updateFloorplanListItemActionIcons(li);
     });
   }
 
@@ -345,7 +361,52 @@ export function initFloorplans() {
       })();
       files.forEach((filename) => {
         const li = document.createElement('li');
-        li.textContent = filename;
+        const nameEl = document.createElement('span');
+        nameEl.className = 'floorplan-item-name';
+        nameEl.textContent = filename;
+
+        const actionsEl = document.createElement('div');
+        actionsEl.className = 'floorplan-item-actions';
+
+        const actionConfigs = [
+          { action: 'update', icon: 'assets/icons/update.png', label: 'Update floor plan' },
+          { action: 'rename', icon: 'assets/icons/rename.png', label: 'Rename floor plan' },
+          { action: 'delete', icon: 'assets/icons/delete1.png', label: 'Delete floor plan' },
+        ];
+
+        actionConfigs.forEach(({ action, icon, label }) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = `floorplan-item-action-btn floorplan-item-action-${action}`;
+          button.dataset.floorplanAction = action;
+          button.setAttribute('aria-label', label);
+          button.title = label;
+
+          const img = document.createElement('img');
+          img.src = icon;
+          img.alt = '';
+          button.appendChild(img);
+
+          button.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            onFloorplanClick(filename);
+            if (action === 'update') {
+              handleUpdateFloorplan();
+              return;
+            }
+            if (action === 'rename') {
+              handleRenameFloorplan();
+              return;
+            }
+            if (action === 'delete') {
+              handleDeleteFloorplan();
+            }
+          });
+
+          actionsEl.appendChild(button);
+        });
+
+        li.append(nameEl, actionsEl);
         li.dataset.filename = filename;
         li.draggable = true;
         li.addEventListener('click', () => onFloorplanClick(filename));
@@ -388,6 +449,7 @@ export function initFloorplans() {
             console.warn('Failed to save floor plan order', e);
           }
         });
+        updateFloorplanListItemActionIcons(li);
         if (addBtn && addBtn.parentElement === floorList) {
           floorList.insertBefore(li, addBtn);
         } else {
@@ -409,6 +471,8 @@ export function initFloorplans() {
       }
       if (files.length > 0 && lastSaved && files.includes(lastSaved)) {
         onFloorplanClick(lastSaved);
+      } else {
+        refreshAllFloorplanListActionIcons();
       }
     } catch (e) {
       console.error('Error loading floorplans', e);
@@ -626,185 +690,176 @@ export function initFloorplans() {
     });
   }
 
-  if (updateBtn) {
-    updateBtn.addEventListener('click', async () => {
-      if (!selectedFloorplan) {
-        await showAlert('Please select a floor plan to update.', 'Update floor plan');
+  async function handleUpdateFloorplan() {
+    if (!selectedFloorplan) {
+      await showAlert('Please select a floor plan to update.', 'Update floor plan');
+      return;
+    }
+    const floorplanToUpdate = selectedFloorplan;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.style.display = 'none';
+    input.addEventListener('change', async () => {
+      const file = input.files && input.files[0];
+      if (!file) {
+        document.body.removeChild(input);
         return;
       }
-      const floorplanToUpdate = selectedFloorplan;
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.style.display = 'none';
-      input.addEventListener('change', async () => {
-        const file = input.files && input.files[0];
-        if (!file) {
-          document.body.removeChild(input);
-          return;
-        }
-        const confirmed = await showConfirm(
-          `Are you sure you want to update "${floorplanToUpdate}"?`,
-          'Update floor plan'
-        );
-        if (!confirmed) {
-          document.body.removeChild(input);
-          return;
-        }
-        const formData = new FormData();
-        formData.append('floorplan', file);
-        formData.append('oldFilename', floorplanToUpdate);
-        showProgressDialog('Updating floor plan image...');
-        try {
-          const response = await new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.open('PUT', appendProjectParams('/upload-floorplan/update'));
-            xhr.upload.onprogress = (e) => {
-              if (!e.lengthComputable || e.total <= 0) return;
-              const percent = Math.round((e.loaded / e.total) * 100);
-              updateProgressDialog(percent);
-            };
-            xhr.onload = () => {
-              try {
-                const json = JSON.parse(xhr.responseText || '{}');
-                resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, json });
-              } catch (err) {
-                reject(err);
-              }
-            };
-            xhr.onerror = () => reject(new Error('Network error'));
-            xhr.send(formData);
-          });
-          updateProgressDialog(100);
-          hideProgressDialog();
-          const data = response.json;
-          if (!response.ok || !data.success) {
-            await showAlert('Error updating floor plan: ' + (data && data.message ? data.message : response.status), 'Update floor plan');
-          } else {
-            const updatedFilename = (() => {
-              const fromNew = data && typeof data.newFilename === 'string' ? data.newFilename.trim() : '';
-              if (fromNew) return fromNew;
-              const fromAlias = data && typeof data.filename === 'string' ? data.filename.trim() : '';
-              if (fromAlias) return fromAlias;
-              return floorplanToUpdate;
-            })();
-
-            let hotspotsChanged = false;
-            if (floorplanHotspotsByFile.has(floorplanToUpdate)) {
-              floorplanHotspotsByFile.delete(floorplanToUpdate);
-              hotspotsChanged = true;
-            }
-            if (updatedFilename !== floorplanToUpdate && floorplanHotspotsByFile.has(updatedFilename)) {
-              floorplanHotspotsByFile.delete(updatedFilename);
-              hotspotsChanged = true;
-            }
-            if (hotspotsChanged) {
-              selectedHotspotId = null;
-              saveFloorplanHotspotsToStorage();
-              renderFloorplanHotspots();
-              renderRenderedHotspots();
-            }
-            moveFloorplanImageCache(floorplanToUpdate, updatedFilename);
-            bumpFloorplanImageCache(updatedFilename);
-            selectedFloorplan = updatedFilename;
-            await loadFloorplans();
-            onFloorplanClick(updatedFilename);
-            openModalFor(updatedFilename);
-            await showTimedAlert('Floor plan updated successfully.', 'Update floor plan', 500);
-          }
-        } catch (e) {
-          hideProgressDialog();
-          await showAlert('Error updating floor plan: ' + e, 'Update floor plan');
-        } finally {
-          document.body.removeChild(input);
-        }
-      });
-      document.body.appendChild(input);
-      input.click();
-    });
-  }
-
-  if (renameBtn) {
-    renameBtn.addEventListener('click', async () => {
-      if (!selectedFloorplan) {
-        await showAlert('Please select a floor plan to rename.', 'Rename floor plan');
+      const confirmed = await showConfirm(
+        `Are you sure you want to update "${floorplanToUpdate}"?`,
+        'Update floor plan'
+      );
+      if (!confirmed) {
+        document.body.removeChild(input);
         return;
       }
-      const lastDotIndex = selectedFloorplan.lastIndexOf('.');
-      const extension = lastDotIndex > -1 ? selectedFloorplan.substring(lastDotIndex) : '';
-      const nameWithoutExt = lastDotIndex > -1 ? selectedFloorplan.substring(0, lastDotIndex) : selectedFloorplan;
-      const newName = await showPrompt(`Enter new name for "${selectedFloorplan}":`, nameWithoutExt, 'Rename floor plan');
-      if (newName === null || newName === '') return;
-      const newFileName = newName.includes('.') ? newName : newName + extension;
-      if (newFileName.includes('/') || newFileName.includes('\\') || newFileName.includes('..')) {
-        await showAlert('Invalid filename. Please avoid special characters like / \\ ..', 'Rename floor plan');
-        return;
-      }
+      const formData = new FormData();
+      formData.append('floorplan', file);
+      formData.append('oldFilename', floorplanToUpdate);
+      showProgressDialog('Updating floor plan image...');
       try {
-        const res = await fetch(appendProjectParams('/api/floorplans/rename'), {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ oldFilename: selectedFloorplan, newFilename: newFileName }),
+        const response = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', appendProjectParams('/upload-floorplan/update'));
+          xhr.upload.onprogress = (e) => {
+            if (!e.lengthComputable || e.total <= 0) return;
+            const percent = Math.round((e.loaded / e.total) * 100);
+            updateProgressDialog(percent);
+          };
+          xhr.onload = () => {
+            try {
+              const json = JSON.parse(xhr.responseText || '{}');
+              resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, json });
+            } catch (err) {
+              reject(err);
+            }
+          };
+          xhr.onerror = () => reject(new Error('Network error'));
+          xhr.send(formData);
         });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          await showAlert('Error renaming floor plan: ' + (data && data.message ? data.message : res.status), 'Rename floor plan');
-        } else {
-          // Move hotspots mapping to new key
-          if (floorplanHotspotsByFile.has(selectedFloorplan)) {
-            const list = floorplanHotspotsByFile.get(selectedFloorplan);
-            floorplanHotspotsByFile.delete(selectedFloorplan);
-            floorplanHotspotsByFile.set(newFileName, list);
-            saveFloorplanHotspotsToStorage();
-          }
-          moveFloorplanImageCache(selectedFloorplan, newFileName);
-          selectedFloorplan = newFileName;
-          await loadFloorplans();
-          onFloorplanClick(selectedFloorplan);
-          openModalFor(selectedFloorplan);
-          await showTimedAlert('Floor plan renamed successfully.', 'Rename floor plan', 500);
-        }
-      } catch (e) {
-        await showAlert('Error renaming floor plan: ' + e, 'Rename floor plan');
-      }
-    });
-  }
-
-  if (deleteBtn) {
-    deleteBtn.addEventListener('click', async () => {
-      if (!selectedFloorplan) {
-        await showAlert('Please select a floor plan to delete.', 'Delete floor plan');
-        return;
-      }
-      const confirmed = await showConfirm(`Are you sure you want to delete "${selectedFloorplan}"?`, 'Delete floor plan');
-      if (!confirmed) return;
-      showProgressDialog('Deleting floor plan image...');
-      updateProgressDialog(20);
-      try {
-        const res = await fetch(appendProjectParams(`/api/floorplans/${encodeURIComponent(selectedFloorplan)}`), {
-          method: 'DELETE',
-        });
-        updateProgressDialog(90);
-        const data = await res.json();
         updateProgressDialog(100);
         hideProgressDialog();
-        if (!res.ok || !data.success) {
-          await showAlert('Error deleting floor plan: ' + (data && data.message ? data.message : res.status), 'Delete floor plan');
+        const data = response.json;
+        if (!response.ok || !data.success) {
+          await showAlert('Error updating floor plan: ' + (data && data.message ? data.message : response.status), 'Update floor plan');
         } else {
-          floorplanCacheBustByFile.delete(selectedFloorplan);
-          floorplanHotspotsByFile.delete(selectedFloorplan);
-          saveFloorplanHotspotsToStorage();
-          selectedFloorplan = null;
-          closeModal();
+          const updatedFilename = (() => {
+            const fromNew = data && typeof data.newFilename === 'string' ? data.newFilename.trim() : '';
+            if (fromNew) return fromNew;
+            const fromAlias = data && typeof data.filename === 'string' ? data.filename.trim() : '';
+            if (fromAlias) return fromAlias;
+            return floorplanToUpdate;
+          })();
+
+          let hotspotsChanged = false;
+          if (floorplanHotspotsByFile.has(floorplanToUpdate)) {
+            floorplanHotspotsByFile.delete(floorplanToUpdate);
+            hotspotsChanged = true;
+          }
+          if (updatedFilename !== floorplanToUpdate && floorplanHotspotsByFile.has(updatedFilename)) {
+            floorplanHotspotsByFile.delete(updatedFilename);
+            hotspotsChanged = true;
+          }
+          if (hotspotsChanged) {
+            selectedHotspotId = null;
+            saveFloorplanHotspotsToStorage();
+            renderFloorplanHotspots();
+            renderRenderedHotspots();
+          }
+          moveFloorplanImageCache(floorplanToUpdate, updatedFilename);
+          bumpFloorplanImageCache(updatedFilename);
+          selectedFloorplan = updatedFilename;
           await loadFloorplans();
-          setPreviewVisible(false);
-          await showTimedAlert('Floor plan deleted successfully.', 'Delete floor plan', 500);
+          onFloorplanClick(updatedFilename);
+          await showTimedAlert('Floor plan updated successfully.', 'Update floor plan', 500);
         }
       } catch (e) {
         hideProgressDialog();
-        await showAlert('Error deleting floor plan: ' + e, 'Delete floor plan');
+        await showAlert('Error updating floor plan: ' + e, 'Update floor plan');
+      } finally {
+        document.body.removeChild(input);
       }
     });
+    document.body.appendChild(input);
+    input.click();
+  }
+
+  async function handleRenameFloorplan() {
+    if (!selectedFloorplan) {
+      await showAlert('Please select a floor plan to rename.', 'Rename floor plan');
+      return;
+    }
+    const lastDotIndex = selectedFloorplan.lastIndexOf('.');
+    const extension = lastDotIndex > -1 ? selectedFloorplan.substring(lastDotIndex) : '';
+    const nameWithoutExt = lastDotIndex > -1 ? selectedFloorplan.substring(0, lastDotIndex) : selectedFloorplan;
+    const newName = await showPrompt(`Enter new name for "${selectedFloorplan}":`, nameWithoutExt, 'Rename floor plan');
+    if (newName === null || newName === '') return;
+    const newFileName = newName.includes('.') ? newName : newName + extension;
+    if (newFileName.includes('/') || newFileName.includes('\\') || newFileName.includes('..')) {
+      await showAlert('Invalid filename. Please avoid special characters like / \\ ..', 'Rename floor plan');
+      return;
+    }
+    try {
+      const res = await fetch(appendProjectParams('/api/floorplans/rename'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldFilename: selectedFloorplan, newFilename: newFileName }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        await showAlert('Error renaming floor plan: ' + (data && data.message ? data.message : res.status), 'Rename floor plan');
+      } else {
+        if (floorplanHotspotsByFile.has(selectedFloorplan)) {
+          const list = floorplanHotspotsByFile.get(selectedFloorplan);
+          floorplanHotspotsByFile.delete(selectedFloorplan);
+          floorplanHotspotsByFile.set(newFileName, list);
+          saveFloorplanHotspotsToStorage();
+        }
+        moveFloorplanImageCache(selectedFloorplan, newFileName);
+        selectedFloorplan = newFileName;
+        await loadFloorplans();
+        onFloorplanClick(selectedFloorplan);
+        await showTimedAlert('Floor plan renamed successfully.', 'Rename floor plan', 500);
+      }
+    } catch (e) {
+      await showAlert('Error renaming floor plan: ' + e, 'Rename floor plan');
+    }
+  }
+
+  async function handleDeleteFloorplan() {
+    if (!selectedFloorplan) {
+      await showAlert('Please select a floor plan to delete.', 'Delete floor plan');
+      return;
+    }
+    const confirmed = await showConfirm(`Are you sure you want to delete "${selectedFloorplan}"?`, 'Delete floor plan');
+    if (!confirmed) return;
+    showProgressDialog('Deleting floor plan image...');
+    updateProgressDialog(20);
+    try {
+      const res = await fetch(appendProjectParams(`/api/floorplans/${encodeURIComponent(selectedFloorplan)}`), {
+        method: 'DELETE',
+      });
+      updateProgressDialog(90);
+      const data = await res.json();
+      updateProgressDialog(100);
+      hideProgressDialog();
+      if (!res.ok || !data.success) {
+        await showAlert('Error deleting floor plan: ' + (data && data.message ? data.message : res.status), 'Delete floor plan');
+      } else {
+        floorplanCacheBustByFile.delete(selectedFloorplan);
+        floorplanHotspotsByFile.delete(selectedFloorplan);
+        saveFloorplanHotspotsToStorage();
+        selectedFloorplan = null;
+        closeModal();
+        await loadFloorplans();
+        setPreviewVisible(false);
+        await showTimedAlert('Floor plan deleted successfully.', 'Delete floor plan', 500);
+      }
+    } catch (e) {
+      hideProgressDialog();
+      await showAlert('Error deleting floor plan: ' + e, 'Delete floor plan');
+    }
   }
 
   // Open modal when clicking the small preview

@@ -283,12 +283,61 @@
   margin: .2rem;
   border-radius: 4px;
   cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   background: #d4dfe4;
   color: #333;
   transition: background 0.2s ease, color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.floorplan-item-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.floorplan-item-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+#pano-floorplan-list li:hover .floorplan-item-actions,
+#pano-floorplan-list li.active .floorplan-item-actions {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.floorplan-item-action-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease;
+}
+
+.floorplan-item-action-btn img {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.floorplan-item-action-btn:hover {
+  background: rgba(0, 0, 0, 0.12);
 }
 
 #pano-floorplan-list li:hover {
@@ -468,7 +517,7 @@
 .floorplan-modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 0;
   padding: 10px 12px;
   background: #ffffff;
   border-top: 1px solid #e0e0e0;
@@ -488,21 +537,6 @@
 .floorplan-action-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-}
-
-.floorplan-update {
-  background: #d4b54e;
-  color: #ffffff;
-}
-
-.floorplan-rename {
-  background: #66bb6a;
-  color: #fff;
-}
-
-.floorplan-delete {
-  background: #e53935;
-  color: #fff;
 }
 
 .floorplan-hotspot {

@@ -1,27 +1,31 @@
 /* Scrollbar styling for image list */
 #pano-image-list::-webkit-scrollbar,
 #project-list::-webkit-scrollbar,
+.project-table-scroll::-webkit-scrollbar,
 .project-list::-webkit-scrollbar,
 #pano-floorplan-list::-webkit-scrollbar {
-    width: 5px;
+    width: 8px;
 }
 #pano-image-list::-webkit-scrollbar-track,
 #project-list::-webkit-scrollbar-track,
+.project-table-scroll::-webkit-scrollbar-track,
 .project-list::-webkit-scrollbar-track,
 #pano-floorplan-list::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: #c7c7c7;
     border-radius: 4px;
 }
 #pano-image-list::-webkit-scrollbar-thumb,
 #project-list::-webkit-scrollbar-thumb,
+.project-table-scroll::-webkit-scrollbar-thumb,
 .project-list::-webkit-scrollbar-thumb,
 #pano-floorplan-list::-webkit-scrollbar-thumb {
-    background: #888;
+    background: #176383;
     border-radius: 4px;
 }
 #pano-image-list::-webkit-scrollbar-thumb:hover,
 #project-list::-webkit-scrollbar-thumb:hover,
+.project-table-scroll::-webkit-scrollbar-thumb:hover,
 .project-list::-webkit-scrollbar-thumb:hover,
 #pano-floorplan-list::-webkit-scrollbar-thumb:hover {
-    background: #555;
+    background: #0d3d52;
 }

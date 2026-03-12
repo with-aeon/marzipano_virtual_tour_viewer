@@ -33,13 +33,15 @@
                     <input type="text" id="project-search-input" class="project-search-input" placeholder="Search" autocomplete="off">
                 </div>
             </section>
-            <section id="project-container-header">
-                <p>Project Number</p>
-                <p>Project Name</p>
-                <p>Status</p>
-                <p id="header-action">Action</p>
-            </section>
-            <section class="project-list" id="project-list"></section>
+            <div class="project-table-scroll" id="project-table-scroll">
+                <section id="project-container-header">
+                    <p>Project Number</p>
+                    <p>Project Name</p>
+                    <p>Status</p>
+                    <p id="header-action">Action</p>
+                </section>
+                <section class="project-list" id="project-list"></section>
+            </div>
         </div>
         <p class="empty-state" id="empty-state">No projects yet. Create one to get started.</p>
     </main>

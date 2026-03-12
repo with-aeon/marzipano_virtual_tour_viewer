@@ -419,7 +419,7 @@ function showPreview(filename) {
   renderRenderedHotspots();
 }
 
-function renderHotspotsToLayer(layerEl, { allowClickToPanorama, showTitle }) {
+function renderHotspotsToLayer(layerEl, { allowClickToPanorama, showTitle, sizeClass }) {
   if (!layerEl || !selectedFloorplan) return;
   layerEl.innerHTML = '';
   const list = floorplanHotspotsByFile.get(selectedFloorplan) || [];
@@ -433,7 +433,10 @@ function renderHotspotsToLayer(layerEl, { allowClickToPanorama, showTitle }) {
 
     const dot = document.createElement('button');
     dot.type = 'button';
-    dot.className = 'floorplan-hotspot-pin-dot' + (selectedHotspotId === entry.id ? ' selected' : '');
+    dot.className =
+      'floorplan-hotspot-pin-dot' +
+      (sizeClass ? ` ${sizeClass}` : '') +
+      (selectedHotspotId === entry.id ? ' selected' : '');
     if (allowClickToPanorama && entry.linkTo) {
       dot.addEventListener('click', async (e) => {
         if (magnifierEnabled) return;
@@ -454,12 +457,20 @@ function renderHotspotsToLayer(layerEl, { allowClickToPanorama, showTitle }) {
 
 function renderFloorplanHotspots() {
   if (!modalHotspotLayer) return;
-  renderHotspotsToLayer(modalHotspotLayer, { allowClickToPanorama: true, showTitle: false });
+  renderHotspotsToLayer(modalHotspotLayer, {
+    allowClickToPanorama: true,
+    showTitle: false,
+    sizeClass: 'hotspot-modal',
+  });
 }
 
 function renderRenderedHotspots() {
   if (!previewHotspotLayer) return;
-  renderHotspotsToLayer(previewHotspotLayer, { allowClickToPanorama: true, showTitle: false });
+  renderHotspotsToLayer(previewHotspotLayer, {
+    allowClickToPanorama: true,
+    showTitle: false,
+    sizeClass: 'hotspot-preview',
+  });
 }
 
 function saveLastFloorplan(filename) {

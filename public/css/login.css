@@ -1,6 +1,6 @@
 .login-main {
     display: flex;
-    justify-content: center;
+    justify-content: flex-start;
     align-items: center;
     min-height: 100vh;
     /* background-color: #c2c2c2; */
@@ -22,9 +22,10 @@
     background-color: #2d6b8a;
     border-radius: 8px;
     padding: 2rem;
+    margin-left: 12rem;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
     width: 100%;
-    max-width: 400px;
+    max-width: 450px;
     height: 32rem;
 }
 

@@ -14,40 +14,30 @@
 
 .floorplan-modal-overlay-client .floorplan-modal {
   position: relative;
-  overflow: visible;
 }
 
 .floorplan-modal-overlay-client .floorplan-magnifier-controls {
-  position: absolute;
-  right: -76px;
-  bottom: 12px;
   display: flex;
-  flex-direction: column;
+  flex: 1;
+  flex-direction: row;
+  justify-content: flex-end;
   align-items: center;
-  gap: 8px;
-  z-index: 8;
+  gap: 10px;
 }
 
 .floorplan-modal-overlay-client .floorplan-magnifier-levels {
   display: none;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-  padding: 4px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
   border-radius: 999px;
   background: rgba(17, 82, 114, 0.9);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(6px);
-  transition: opacity 140ms ease, transform 140ms ease;
 }
 
 .floorplan-modal-overlay-client .floorplan-magnifier-levels.enabled {
   display: flex;
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
 }
 
 .floorplan-modal-overlay-client .floorplan-magnifier-levels button {
@@ -139,11 +129,4 @@
 .floorplan-modal-overlay-client .floorplan-magnifier-lens.visible {
   opacity: 1;
   visibility: visible;
-}
-
-@media (max-width: 980px) {
-  .floorplan-modal-overlay-client .floorplan-magnifier-controls {
-    right: 12px;
-    bottom: 12px;
-  }
 }

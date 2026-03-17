@@ -140,6 +140,8 @@
 
 #pano-upload-btn,
 #pano-delete-selection-btn,
+#pano-delete-confirm-btn,
+#pano-delete-back-btn,
 #pano-hotspot-btn,
 #pano-blur-btn,
 #pano-blur-add-btn,
@@ -166,6 +168,18 @@
 }
 #pano-delete-selection-btn.active {
     background-color: rgb(130, 0, 0);
+}
+
+#pano-delete-confirm-btn {
+    background-color: rgb(198, 0, 0);
+    color: #fff;
+    display: none;
+}
+
+#pano-delete-back-btn {
+    background-color: #e0e0e0;
+    color: #115272;
+    display: none;
 }
 #pano-blur-btn {
     background-color: rgb(79, 120, 141);
@@ -721,6 +735,24 @@ body.floorplan-modal-open #pano-panel {
 }
 #pano-action.blur-mode #pano-blur-btn,
 #pano-action.blur-mode #pano-blur-add-btn {
+  display: flex;
+  margin-bottom: 0;
+}
+
+#pano-action.delete-mode {
+  padding: 8px 10px;
+  gap: 8px;
+}
+#pano-action.delete-mode #pano-upload-btn,
+#pano-action.delete-mode #pano-delete-selection-btn,
+#pano-action.delete-mode #pano-hotspot-btn,
+#pano-action.delete-mode #pano-blur-btn,
+#pano-action.delete-mode #pano-blur-add-btn,
+#pano-action.delete-mode #pano-initial-view-btn {
+  display: none;
+}
+#pano-action.delete-mode #pano-delete-confirm-btn,
+#pano-action.delete-mode #pano-delete-back-btn {
   display: flex;
   margin-bottom: 0;
 }

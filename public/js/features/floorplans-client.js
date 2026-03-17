@@ -240,7 +240,7 @@ function applyServerFloorplanHotspots(data) {
 
 async function loadFloorplanHotspotsFromServer() {
   try {
-    const res = await fetch(appendProjectParams('/api/floorplan-hotspots'));
+    const res = await fetch(appendProjectParams('/api/floorplan-hotspots'), { cache: 'no-store' });
     if (!res.ok) return;
     const data = await res.json();
     applyServerFloorplanHotspots(data);
@@ -300,14 +300,16 @@ function ensureModalElements() {
           <div class="floorplan-magnifier-lens" aria-hidden="true"></div>
         </div>
       </div>
-      <div class="floorplan-magnifier-controls" aria-label="Floor plan magnifier controls">
-        <div id="floorplan-magnifier-levels" class="floorplan-magnifier-levels" role="group" aria-label="Magnification level">
-          <button type="button" data-magnifier-level="2">2x</button>
-          <button type="button" data-magnifier-level="2.5">2.5x</button>
+      <div class="floorplan-modal-actions">
+        <div class="floorplan-magnifier-controls" aria-label="Floor plan magnifier controls">
+          <div id="floorplan-magnifier-levels" class="floorplan-magnifier-levels" role="group" aria-label="Magnification level">
+            <button type="button" data-magnifier-level="2">2x</button>
+            <button type="button" data-magnifier-level="2.5">2.5x</button>
+          </div>
+          <button type="button" id="floorplan-magnifier-toggle" class="floorplan-magnifier-toggle" aria-label="Toggle floor plan magnifier" aria-pressed="false">
+            <img src="assets/search.png" alt="" aria-hidden="true">
+          </button>
         </div>
-        <button type="button" id="floorplan-magnifier-toggle" class="floorplan-magnifier-toggle" aria-label="Toggle floor plan magnifier" aria-pressed="false">
-          <img src="assets/search.png" alt="" aria-hidden="true">
-        </button>
       </div>
     </div>
   `;
@@ -448,8 +450,9 @@ function openModalFor(filename) {
   setPreviewVisible(false);
   modalOverlay.classList.add('visible');
   document.body.classList.add('floorplan-modal-open');
-  syncModalStageSize();
-  renderFloorplanHotspots();
+  requestAnimationFrame(() => {
+    rerenderHotspotsForLayout();
+  });
 }
 
 function showPreview(filename) {
@@ -561,8 +564,7 @@ async function loadFloorplans() {
 
 export async function reloadFloorplanHotspotsClient() {
   await loadFloorplanHotspotsFromServer();
-  renderFloorplanHotspots();
-  renderRenderedHotspots();
+  rerenderHotspotsForLayout();
 }
 
 export async function reloadFloorplansListClient() {

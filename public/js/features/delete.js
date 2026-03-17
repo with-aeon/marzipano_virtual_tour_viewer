@@ -4,8 +4,19 @@ import { appendProjectParams } from '../project-context.js';
 
 export function initDelete() {
   const deleteSelectionBtnEl = document.getElementById('pano-delete-selection-btn');
+  const deleteConfirmBtnEl = document.getElementById('pano-delete-confirm-btn');
+  const deleteBackBtnEl = document.getElementById('pano-delete-back-btn');
+  const actionPanelEl = document.getElementById('pano-action');
+
   if (deleteSelectionBtnEl) {
-    deleteSelectionBtnEl.addEventListener('click', handleDeleteSelection);
+    deleteSelectionBtnEl.addEventListener('click', () => enterDeleteSelectionMode({ deleteSelectionBtnEl, actionPanelEl }));
+    deleteSelectionBtnEl.title = 'Click to start delete-selection mode';
+  }
+  if (deleteConfirmBtnEl) {
+    deleteConfirmBtnEl.addEventListener('click', () => handleDeleteMarked({ deleteSelectionBtnEl, actionPanelEl }));
+  }
+  if (deleteBackBtnEl) {
+    deleteBackBtnEl.addEventListener('click', () => exitDeleteSelectionMode({ deleteSelectionBtnEl, actionPanelEl }));
   }
 
   document.addEventListener('click', async (event) => {
@@ -23,6 +34,67 @@ export function initDelete() {
   });
 }
 
+async function enterDeleteSelectionMode({ deleteSelectionBtnEl, actionPanelEl }) {
+  const { isDeleteSelectionMode, setDeleteSelectionMode } = await import('../marzipano-viewer.js');
+  if (isDeleteSelectionMode()) return;
+
+  setDeleteSelectionMode(true);
+  if (actionPanelEl) actionPanelEl.classList.add('delete-mode');
+  if (deleteSelectionBtnEl) {
+    deleteSelectionBtnEl.classList.add('active');
+    deleteSelectionBtnEl.title = 'Click panoramas to mark them, then press Delete';
+  }
+
+  await showTimedAlert(
+    'Delete selection mode enabled. Click panoramas to mark them in red, then press Delete.',
+    'Delete selection',
+    900
+  );
+}
+
+async function exitDeleteSelectionMode({ deleteSelectionBtnEl, actionPanelEl }) {
+  const { isDeleteSelectionMode, setDeleteSelectionMode } = await import('../marzipano-viewer.js');
+  if (!isDeleteSelectionMode()) {
+    if (actionPanelEl) actionPanelEl.classList.remove('delete-mode');
+    if (deleteSelectionBtnEl) {
+      deleteSelectionBtnEl.classList.remove('active');
+      deleteSelectionBtnEl.title = 'Click to start delete-selection mode';
+    }
+    return;
+  }
+
+  setDeleteSelectionMode(false);
+  if (actionPanelEl) actionPanelEl.classList.remove('delete-mode');
+  if (deleteSelectionBtnEl) {
+    deleteSelectionBtnEl.classList.remove('active');
+    deleteSelectionBtnEl.title = 'Click to start delete-selection mode';
+  }
+}
+
+async function handleDeleteMarked({ deleteSelectionBtnEl, actionPanelEl }) {
+  const { getMultiSelectedImageNames, isDeleteSelectionMode } = await import('../marzipano-viewer.js');
+  if (!isDeleteSelectionMode()) return;
+
+  const selectedNames = getMultiSelectedImageNames();
+  if (selectedNames.length === 0) {
+    await showAlert('No panoramas selected. Click panoramas to mark them in red.', 'Delete');
+    return;
+  }
+
+  const msg =
+    selectedNames.length === 1
+      ? `Are you sure you want to delete "${selectedNames[0]}"?`
+      : `Are you sure you want to delete ${selectedNames.length} selected images?`;
+  const confirmDelete = await showConfirm(msg, 'Delete');
+  if (!confirmDelete) return;
+
+  try {
+    await deleteImages(selectedNames, 'Delete');
+  } finally {
+    await exitDeleteSelectionMode({ deleteSelectionBtnEl, actionPanelEl });
+  }
+}
+
 async function handleDeleteSingle() {
   const { getSelectedImageName } = await import('../marzipano-viewer.js');
   const selectedName = getSelectedImageName();
@@ -36,40 +108,6 @@ async function handleDeleteSingle() {
   if (!confirmDelete) return;
 
   await deleteImages([selectedName], 'Delete');
-}
-
-async function handleDeleteSelection() {
-  const { getMultiSelectedImageNames, isDeleteSelectionMode, setDeleteSelectionMode } = await import('../marzipano-viewer.js');
-  const deleteSelectionBtnEl = document.getElementById('pano-delete-selection-btn');
-
-  if (!isDeleteSelectionMode()) {
-    setDeleteSelectionMode(true);
-    if (deleteSelectionBtnEl) {
-      deleteSelectionBtnEl.classList.add('active');
-      deleteSelectionBtnEl.title = 'Ctrl/Cmd+Click panoramas to mark them, then click again to delete';
-    }
-    await showTimedAlert('Delete selection mode enabled. Use Ctrl/Cmd+Click to mark panoramas in red.', 'Delete selection', 900);
-    return;
-  }
-
-  const selectedNames = getMultiSelectedImageNames();
-  if (selectedNames.length === 0) {
-    await showAlert('No panoramas marked. Use Ctrl/Cmd+Click to mark panoramas in red.', 'Delete selection');
-    return;
-  }
-
-  const msg = selectedNames.length === 1
-    ? `Are you sure you want to delete "${selectedNames[0]}"?`
-    : `Are you sure you want to delete ${selectedNames.length} selected images?`;
-  const confirmDelete = await showConfirm(msg, 'Delete selection');
-  if (!confirmDelete) return;
-
-  setDeleteSelectionMode(false);
-  if (deleteSelectionBtnEl) {
-    deleteSelectionBtnEl.classList.remove('active');
-    deleteSelectionBtnEl.title = 'Click to start delete-selection mode';
-  }
-  await deleteImages(selectedNames, 'Delete selection');
 }
 
 async function deleteImages(imageNames, title) {

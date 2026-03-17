@@ -653,6 +653,7 @@ export function initFloorplans() {
 
   async function addFloorplanHotspotAt(clientX, clientY) {
     if (!modalImg || !selectedFloorplan) return;
+    syncModalStageSize();
     const rect = modalImg.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
     const x = (clientX - rect.left) / rect.width;
@@ -919,7 +920,7 @@ export function initFloorplans() {
   (async () => {
     loadFloorplanHotspotsFromStorage();
     try {
-      const res = await fetch(appendProjectParams('/api/floorplan-hotspots'));
+      const res = await fetch(appendProjectParams('/api/floorplan-hotspots'), { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         if (data && typeof data === 'object') {

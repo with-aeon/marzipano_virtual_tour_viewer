@@ -103,6 +103,19 @@ function refreshAllListActionIcons() {
   document.querySelectorAll('#pano-image-list li').forEach((li) => updateListItemActionIcons(li));
 }
 
+function syncActiveHighlightForDeleteMode() {
+  const items = Array.from(document.querySelectorAll('#pano-image-list li'));
+  if (deleteSelectionMode) {
+    items.forEach((li) => li.classList.remove('active'));
+    refreshAllListActionIcons();
+    return;
+  }
+  items.forEach((li) => {
+    li.classList.toggle('active', Boolean(selectedImageName) && li.dataset.filename === selectedImageName);
+  });
+  refreshAllListActionIcons();
+}
+
 function syncMultiSelectionClasses() {
   document.querySelectorAll('#pano-image-list li').forEach((li) => {
     const selected = deleteSelectionMode && multiSelectedImageNames.has(li.dataset.filename);
@@ -147,7 +160,7 @@ export async function loadPanorama(imageName) {
     document.querySelectorAll('#pano-image-list li').forEach(li => li.classList.remove('active'));
     const sameLi = Array.from(document.querySelectorAll('#pano-image-list li')).find(li => li.dataset.filename === imageName);
     if (sameLi) sameLi.classList.add('active');
-    refreshAllListActionIcons();
+    syncActiveHighlightForDeleteMode();
     return;
   }
   currentImagePath = imagePath;
@@ -212,7 +225,7 @@ export async function loadPanorama(imageName) {
   if (activeLi) {
     activeLi.classList.add('active');
   }
-  refreshAllListActionIcons();
+  syncActiveHighlightForDeleteMode();
 }
 
 // Load and display list of images
@@ -312,35 +325,35 @@ export async function loadImages(onImagesLoaded) {
 
         const allItems = Array.from(document.querySelectorAll('#pano-image-list li'));
         const currentIndex = allItems.indexOf(li);
-        const isToggleSelection = deleteSelectionMode && (ev.ctrlKey || ev.metaKey);
         const isRangeSelection = deleteSelectionMode && ev.shiftKey && lastMultiSelectIndex !== null;
+        const isToggleSelection = deleteSelectionMode && !isRangeSelection;
 
-        if (isRangeSelection) {
-          const start = Math.min(lastMultiSelectIndex, currentIndex);
-          const end = Math.max(lastMultiSelectIndex, currentIndex);
-          multiSelectedImageNames.clear();
-          for (let i = start; i <= end; i += 1) {
-            const filename = allItems[i]?.dataset?.filename;
-            if (filename) multiSelectedImageNames.add(filename);
+        if (deleteSelectionMode) {
+          if (isRangeSelection) {
+            const start = Math.min(lastMultiSelectIndex, currentIndex);
+            const end = Math.max(lastMultiSelectIndex, currentIndex);
+            multiSelectedImageNames.clear();
+            for (let i = start; i <= end; i += 1) {
+              const filename = allItems[i]?.dataset?.filename;
+              if (filename) multiSelectedImageNames.add(filename);
+            }
+            syncMultiSelectionClasses();
+          } else if (isToggleSelection) {
+            const filename = li.dataset.filename;
+            if (multiSelectedImageNames.has(filename)) {
+              multiSelectedImageNames.delete(filename);
+            } else {
+              multiSelectedImageNames.add(filename);
+            }
+            li.classList.toggle('multi-selected', multiSelectedImageNames.has(filename));
           }
-          syncMultiSelectionClasses();
-        } else if (isToggleSelection) {
-          const filename = li.dataset.filename;
-          if (multiSelectedImageNames.has(filename)) {
-            multiSelectedImageNames.delete(filename);
-          } else {
-            multiSelectedImageNames.add(filename);
-          }
-          li.classList.toggle('multi-selected', multiSelectedImageNames.has(filename));
           lastMultiSelectIndex = currentIndex;
-        } else if (!deleteSelectionMode) {
-          multiSelectedImageNames.clear();
-          syncMultiSelectionClasses();
-          lastMultiSelectIndex = currentIndex;
-        } else {
-          lastMultiSelectIndex = currentIndex;
+          return;
         }
 
+        multiSelectedImageNames.clear();
+        syncMultiSelectionClasses();
+        lastMultiSelectIndex = currentIndex;
         await loadPanorama(li.dataset.filename);
       });
 
@@ -495,6 +508,7 @@ export function setDeleteSelectionMode(enabled) {
     lastMultiSelectIndex = null;
   }
   syncMultiSelectionClasses();
+  syncActiveHighlightForDeleteMode();
 }
 
 export function isDeleteSelectionMode() {

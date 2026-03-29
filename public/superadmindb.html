@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QCDE - IPVT Super Admin</title>
+    <link rel="stylesheet" href="css/superadmindb.css">
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="header-section">
+            <img src="assets/dep_eng.png" alt="Logo" class="logo">
+            <div class="title">QCDE - IPVT</div>
+        </div>
+
+        <nav>
+            <div class="nav-item active">Projects</div>
+            <div class="nav-item">Approval Requests</div>
+            <div class="nav-item">Audit Logs</div>
+            <div class="nav-item">User Management</div>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="user-card">
+                <span class="user-name">Super Admin</span>
+                <button class="logout-btn">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <section class="content-section active" data-section="projects">
+            <h1>Welcome, Admin</h1>
+        </section>
+
+        <section class="content-section" data-section="approval-requests">
+            <div class="approval-header">
+                <h2>APPROVAL REQUESTS</h2>
+                <div class="approval-search">
+                    <input type="text" placeholder="Search" aria-label="Search approval requests">
+                    <button type="button">Search</button>
+                </div>
+            </div>
+
+            <table class="approval-table">
+                <thead>
+                    <tr>
+                        <th>DATE &amp; TIME</th>
+                        <th>PROJECT NO.</th>
+                        <th>PROJECT NAME</th>
+                        <th>INFORMATION</th>
+                        <th>REQUESTED BY</th>
+                        <th>ACTION</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>2026-03-28 09:45</td>
+                        <td>PRJ-2041</td>
+                        <td>Marina Bay Walkthrough</td>
+                        <td>New pano upload</td>
+                        <td>J. Santos</td>
+                        <td>
+                            <button type="button" class="approval-action approval-approve">Approve</button>
+                            <button type="button" class="approval-action approval-reject">Reject</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>2026-03-28 14:10</td>
+                        <td>PRJ-2042</td>
+                        <td>QCDE HQ Lobby</td>
+                        <td>Title update</td>
+                        <td>M. Reyes</td>
+                        <td>
+                            <button type="button" class="approval-action approval-approve">Approve</button>
+                            <button type="button" class="approval-action approval-reject">Reject</button>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>2026-03-29 08:05</td>
+                        <td>PRJ-2043</td>
+                        <td>Heritage Museum</td>
+                        <td>Scene reorder</td>
+                        <td>A. Lim</td>
+                        <td>
+                            <button type="button" class="approval-action approval-approve">Approve</button>
+                            <button type="button" class="approval-action approval-reject">Reject</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section class="content-section" data-section="audit-logs">
+            <div class="audit-header">
+                <h2>AUDIT LOGS</h2>
+                <div class="audit-search">
+                    <input type="text" placeholder="Search" aria-label="Search audit logs">
+                    <button type="button">Search</button>
+                </div>
+            </div>
+
+            <table class="audit-table">
+                <thead>
+                    <tr>
+                        <th>DATE &amp; TIME</th>
+                        <th>PROJECT NO.</th>
+                        <th>PROJECT NAME</th>
+                        <th>CREATED BY</th>
+                        <th>ACTION</th>
+                        <th>MESSAGE</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>2026-03-28 11:20</td>
+                        <td>PRJ-2036</td>
+                        <td>City Hall Tour</td>
+                        <td>R. Dela Cruz</td>
+                        <td>Approved</td>
+                        <td>Initial publish</td>
+                    </tr>
+                    <tr>
+                        <td>2026-03-28 16:05</td>
+                        <td>PRJ-2039</td>
+                        <td>QCDE Annex</td>
+                        <td>L. Tan</td>
+                        <td>Edited</td>
+                        <td>Updated floor labels</td>
+                    </tr>
+                    <tr>
+                        <td>2026-03-29 09:10</td>
+                        <td>PRJ-2040</td>
+                        <td>National Library</td>
+                        <td>S. Ong</td>
+                        <td>Rejected</td>
+                        <td>Missing metadata</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section class="content-section" data-section="user-management">
+            <div class="user-header">
+                <h2>USER MANAGEMENT</h2>
+                <div class="user-controls">
+                    <div class="user-search">
+                        <input type="text" placeholder="Search" aria-label="Search users">
+                        <button type="button">Search</button>
+                    </div>
+                    <button type="button" class="add-account-btn">+ ADD ACCOUNT</button>
+                </div>
+            </div>
+
+            <table class="user-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>USERNAME</th>
+                        <th>ROLE</th>
+                        <th>DATE ADDED</th>
+                        <th>STATUS</th>
+                        <th>ACTION</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>asantiago</td>
+                        <td>Super Admin</td>
+                        <td>2025-12-04</td>
+                        <td>Active</td>
+                        <td>Manage</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>mreyes</td>
+                        <td>Reviewer</td>
+                        <td>2026-01-18</td>
+                        <td>Active</td>
+                        <td>Manage</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>jlim</td>
+                        <td>Editor</td>
+                        <td>2026-02-09</td>
+                        <td>Suspended</td>
+                        <td>Manage</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <script src="js/superadmindb.js"></script>
+
+</body>
+</html>

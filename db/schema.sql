@@ -18,6 +18,12 @@ CREATE TABLE IF NOT EXISTS projects (
     name VARCHAR(255) NOT NULL,
     number VARCHAR(50) NOT NULL,
     status VARCHAR(20) DEFAULT 'on-going',
+    -- Workflow lifecycle used for request/approve flow.
+    -- DRAFT: Admin working copy (not public)
+    -- PENDING_APPROVAL: awaiting Super Admin decision
+    -- REJECTED: returned to Admin for changes
+    -- PUBLISHED: public/viewer-visible
+    workflow_state VARCHAR(30) NOT NULL DEFAULT 'DRAFT',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

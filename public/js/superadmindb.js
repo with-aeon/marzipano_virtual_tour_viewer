@@ -142,6 +142,170 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    // ---- Approval Requests UI wiring ----
+    const approvalTbody = document.getElementById('approval-requests-tbody');
+    const approvalSearchInput = document.getElementById('approval-search-input');
+    const approvalSearchBtn = document.getElementById('approval-search-btn');
+
+    const APPROVAL_PAGE_SIZE = 50;
+    let approvalsLoadedOnce = false;
+    let approvalsQuery = '';
+    let approvalsOffset = 0;
+    let approvalsStatus = 'PENDING';
+
+    function setApprovalMessage(message) {
+        if (!approvalTbody) return;
+        approvalTbody.innerHTML = '';
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 6;
+        td.textContent = message;
+        tr.appendChild(td);
+        approvalTbody.appendChild(tr);
+    }
+
+    function approvalInfoLabel(row) {
+        const type = String(row.request_type || '');
+        if (type === 'project:publish') return 'Publish project';
+        return type || 'Request';
+    }
+
+    function renderApprovalRows(rows) {
+        if (!approvalTbody) return;
+        approvalTbody.innerHTML = '';
+
+        if (!rows || rows.length === 0) {
+            setApprovalMessage('No approval requests found.');
+            return;
+        }
+
+        for (const r of rows) {
+            const tr = document.createElement('tr');
+
+            const tdTs = document.createElement('td');
+            tdTs.textContent = formatDateTime(r.created_at);
+
+            const tdProjNo = document.createElement('td');
+            tdProjNo.textContent = r.project_number || '';
+
+            const tdProjName = document.createElement('td');
+            tdProjName.textContent = r.project_name || '';
+
+            const tdInfo = document.createElement('td');
+            tdInfo.textContent = approvalInfoLabel(r);
+
+            const tdBy = document.createElement('td');
+            tdBy.textContent = r.requested_by || '';
+
+            const tdAction = document.createElement('td');
+            const approveBtn = document.createElement('button');
+            approveBtn.type = 'button';
+            approveBtn.className = 'approval-action approval-approve';
+            approveBtn.textContent = 'Approve';
+
+            const rejectBtn = document.createElement('button');
+            rejectBtn.type = 'button';
+            rejectBtn.className = 'approval-action approval-reject';
+            rejectBtn.textContent = 'Reject';
+
+            const isPending = String(r.status || '').toUpperCase() === 'PENDING';
+            approveBtn.disabled = !isPending;
+            rejectBtn.disabled = !isPending;
+
+            approveBtn.addEventListener('click', async () => {
+                if (!isPending) return;
+                const ok = window.confirm('Approve this request and publish the project?');
+                if (!ok) return;
+                approveBtn.disabled = true;
+                rejectBtn.disabled = true;
+                try {
+                    await decideApproval(r.id, 'approve', '');
+                    approvalsLoadedOnce = false;
+                    await loadApprovalRequests({ force: true });
+                } catch (e) {
+                    window.alert(e.message || 'Failed to approve.');
+                }
+            });
+
+            rejectBtn.addEventListener('click', async () => {
+                if (!isPending) return;
+                const reason = window.prompt('Reject request. Enter a reason (optional):', '') || '';
+                const ok = window.confirm('Reject this request?');
+                if (!ok) return;
+                approveBtn.disabled = true;
+                rejectBtn.disabled = true;
+                try {
+                    await decideApproval(r.id, 'reject', reason);
+                    approvalsLoadedOnce = false;
+                    await loadApprovalRequests({ force: true });
+                } catch (e) {
+                    window.alert(e.message || 'Failed to reject.');
+                }
+            });
+
+            tdAction.append(approveBtn, rejectBtn);
+            tr.append(tdTs, tdProjNo, tdProjName, tdInfo, tdBy, tdAction);
+            approvalTbody.appendChild(tr);
+        }
+    }
+
+    async function fetchApprovalRequests({ q, status, limit, offset }) {
+        const params = new URLSearchParams();
+        if (q) params.set('q', q);
+        if (status) params.set('status', status);
+        params.set('limit', String(limit));
+        params.set('offset', String(offset));
+        const res = await fetch(`/api/approval-requests?${params.toString()}`, {
+            headers: { 'Accept': 'application/json' }
+        });
+        const raw = await res.text().catch(() => '');
+        let data = null;
+        try { data = raw ? JSON.parse(raw) : null; } catch (e) { data = null; }
+        if (!res.ok) {
+            const msg = (data && (data.error || data.message)) || `Failed to load approval requests (HTTP ${res.status})`;
+            throw new Error(msg);
+        }
+        if (!data || typeof data !== 'object') throw new Error('Invalid approval requests response');
+        return data;
+    }
+
+    async function decideApproval(id, action, comment) {
+        const url = action === 'approve'
+            ? `/api/approval-requests/${encodeURIComponent(id)}/approve`
+            : `/api/approval-requests/${encodeURIComponent(id)}/reject`;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ comment }),
+        });
+        const raw = await res.text().catch(() => '');
+        let data = null;
+        try { data = raw ? JSON.parse(raw) : null; } catch (e) { data = null; }
+        if (!res.ok) {
+            const msg = (data && (data.message || data.error)) || `Request failed (HTTP ${res.status})`;
+            throw new Error(msg);
+        }
+        return data;
+    }
+
+    async function loadApprovalRequests({ force = false } = {}) {
+        if (!approvalTbody) return;
+        if (approvalsLoadedOnce && !force) return;
+        setApprovalMessage('Loading approval requests...');
+        try {
+            const data = await fetchApprovalRequests({
+                q: approvalsQuery,
+                status: approvalsStatus,
+                limit: APPROVAL_PAGE_SIZE,
+                offset: approvalsOffset,
+            });
+            renderApprovalRows(Array.isArray(data.rows) ? data.rows : []);
+            approvalsLoadedOnce = true;
+        } catch (e) {
+            setApprovalMessage(e.message || 'Failed to load approval requests.');
+        }
+    }
+
     // ---- User Management UI wiring ----
     const usersTbody = document.getElementById('users-tbody');
     const userSearchInput = document.getElementById('user-search-input');
@@ -372,6 +536,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (targetKey === 'user-management') {
                 loadUsers();
             }
+            if (targetKey === 'approval-requests') {
+                loadApprovalRequests();
+            }
         });
     });
 
@@ -396,6 +563,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             usersQuery = (userSearchInput && userSearchInput.value.trim()) || '';
             usersLoadedOnce = false;
             loadUsers({ force: true });
+        });
+    }
+
+    if (approvalSearchBtn) {
+        approvalSearchBtn.addEventListener('click', () => {
+            approvalsQuery = (approvalSearchInput && approvalSearchInput.value.trim()) || '';
+            approvalsOffset = 0;
+            approvalsLoadedOnce = false;
+            loadApprovalRequests({ force: true });
+        });
+    }
+    if (approvalSearchInput) {
+        approvalSearchInput.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            if (approvalSearchBtn) approvalSearchBtn.click();
         });
     }
     if (userSearchInput) {

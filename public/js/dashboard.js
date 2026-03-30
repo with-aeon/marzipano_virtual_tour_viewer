@@ -39,6 +39,18 @@ const MAX_PROJECT_NAME_LENGTH = 150;
 const MAX_PROJECT_NUMBER_LENGTH = 20;
 const ALLOWED_PROJECT_STATUSES = new Set(['on-going', 'completed']);
 
+function normalizeWorkflowState(value) {
+  const v = String(value || '').trim().toUpperCase();
+  if (v === 'PENDING_APPROVAL') return 'PENDING_APPROVAL';
+  if (v === 'REJECTED') return 'REJECTED';
+  if (v === 'DRAFT') return 'DRAFT';
+  return 'PUBLISHED';
+}
+
+function isPublishedProject(project) {
+  return normalizeWorkflowState(project && project.workflow_state) === 'PUBLISHED';
+}
+
 // ---- In-memory state used for filtering and rendering ----
 let allProjects = [];
 let openProjectProjects = [];
@@ -681,7 +693,7 @@ function applyOpenProjectSearch() {
 async function loadProjects() {
   try {
     const fetched = await fetchProjects();
-    allProjects = mergeProjectStatuses(allProjects, fetched);
+    allProjects = mergeProjectStatuses(allProjects, fetched).filter(isPublishedProject);
     renderProjectList(allProjects);
   } catch (e) {
     emptyStateEl.textContent = 'Error loading projects: ' + e.message;
@@ -722,14 +734,10 @@ modalCreateBtn.onclick = async () => {
   }
   try {
     const created = await createProject(name, number);
-    // Avoid duplicating the project if the realtime socket already added it
-    if (!allProjects.some(p => p.id === created.id)) {
-      allProjects.push(created);
-    } else {
-      allProjects = allProjects.map(p => p.id === created.id ? created : p);
-    }
-    renderProjectList(allProjects);
+    // Newly created projects start as DRAFT; open them in the staging editor.
     newProjectModal.classList.remove('visible');
+    const params = new URLSearchParams({ project: created.id });
+    window.location.href = `staging-editor.html?${params.toString()}`;
   } catch (e) {
     if (newProjectErrorEl) newProjectErrorEl.textContent = e.message || 'Failed to create project.';
   }
@@ -738,7 +746,7 @@ modalCreateBtn.onclick = async () => {
 document.getElementById('btn-open-project').onclick = async () => {
   try {
     const projects = await fetchProjects();
-    openProjectProjects = mergeProjectStatuses(allProjects, projects);
+    openProjectProjects = mergeProjectStatuses(allProjects, projects).filter(isPublishedProject);
     if (openProjectSearchInput) {
       openProjectSearchInput.value = '';
     }
@@ -791,10 +799,10 @@ try {
   const socket = io();
   socket.on('projects:changed', (projects) => {
     if (!Array.isArray(projects)) return;
-    allProjects = mergeProjectStatuses(allProjects, projects);
+    allProjects = mergeProjectStatuses(allProjects, projects).filter(isPublishedProject);
     applyProjectSearch();
     if (openProjectModal && openProjectModal.classList.contains('visible')) {
-      openProjectProjects = mergeProjectStatuses(openProjectProjects, projects);
+      openProjectProjects = mergeProjectStatuses(openProjectProjects, projects).filter(isPublishedProject);
       applyOpenProjectSearch();
     }
   });

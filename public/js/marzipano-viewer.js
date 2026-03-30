@@ -127,7 +127,13 @@ function syncMultiSelectionClasses() {
 
 function updateHeaderText() {
   if (headerTextEl && headerEl) {
-    headerTextEl.textContent = projectName || '';
+    // Support richer header markup (e.g., staging workflow badge + name).
+    const projectNameEl = document.getElementById('pano-project-name');
+    if (projectNameEl && headerTextEl.contains(projectNameEl)) {
+      projectNameEl.textContent = projectName || '';
+    } else {
+      headerTextEl.textContent = projectName || '';
+    }
     headerEl.style.display = projectName ? '' : 'none';
     if (projectName) document.body.classList.remove('no-pano-header');
     else document.body.classList.add('no-pano-header');

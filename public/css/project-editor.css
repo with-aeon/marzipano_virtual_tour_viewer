@@ -39,6 +39,44 @@
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workflow-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fff;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.workflow-badge-draft { background: #6B7280; }
+.workflow-badge-pending { background: #F59E0B; }
+.workflow-badge-rejected { background: #DC2626; }
+.workflow-badge-published { background: #16A34A; }
+
+.pano-header-btn {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #fff;
+  background-color: #0b4f6c;
+  font-size: 0.9rem;
+  border-radius: 5px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.pano-header-btn:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
 }
 #pano-sidebar-btn {
   height: 44px;

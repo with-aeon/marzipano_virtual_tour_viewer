@@ -38,8 +38,8 @@
             <div class="approval-header">
                 <h2>APPROVAL REQUESTS</h2>
                 <div class="approval-search">
-                    <input type="text" placeholder="Search" aria-label="Search approval requests">
-                    <button type="button">Search</button>
+                    <input id="approval-search-input" type="text" placeholder="Search" aria-label="Search approval requests">
+                    <button id="approval-search-btn" type="button">Search</button>
                 </div>
             </div>
 
@@ -54,41 +54,7 @@
                         <th>ACTION</th>
                     </tr>
                 </thead>
-                <tbody>
-                    <tr>
-                        <td>2026-03-28 09:45</td>
-                        <td>PRJ-2041</td>
-                        <td>Marina Bay Walkthrough</td>
-                        <td>New pano upload</td>
-                        <td>J. Santos</td>
-                        <td>
-                            <button type="button" class="approval-action approval-approve">Approve</button>
-                            <button type="button" class="approval-action approval-reject">Reject</button>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td>
-                            <button type="button" class="approval-action approval-approve">Approve</button>
-                            <button type="button" class="approval-action approval-reject">Reject</button>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>2026-03-29 08:05</td>
-                        <td>PRJ-2043</td>
-                        <td>Heritage Museum</td>
-                        <td>Scene reorder</td>
-                        <td>A. Lim</td>
-                        <td>
-                            <button type="button" class="approval-action approval-approve">Approve</button>
-                            <button type="button" class="approval-action approval-reject">Reject</button>
-                        </td>
-                    </tr>
-                </tbody>
+                <tbody id="approval-requests-tbody"></tbody>
             </table>
         </section>
 

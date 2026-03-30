@@ -51,6 +51,16 @@ async function ensureSingleSessionColumns() {
 }
 ensureSingleSessionColumns().catch(() => {});
 
+// Ensure the DB has the columns required for the request/approve workflow state machine.
+async function ensureProjectWorkflowColumns() {
+  try {
+    await db.query("ALTER TABLE projects ADD COLUMN IF NOT EXISTS workflow_state VARCHAR(30) NOT NULL DEFAULT 'DRAFT'");
+  } catch (e) {
+    console.warn('[projects] unable to ensure workflow columns:', e.message || e);
+  }
+}
+ensureProjectWorkflowColumns().catch(() => {});
+
 let auditLogsDbDisabled = false;
 
 /**
@@ -612,6 +622,15 @@ async function getCurrentUserFromDb(userId) {
   }
 }
 
+async function getValidSessionUser(req) {
+  if (!req || !req.session || !req.session.userId) return null;
+  const user = await getCurrentUserFromDb(req.session.userId);
+  if (!user || user.is_active === false) return null;
+  if (user.active_session_id && String(user.active_session_id) !== String(req.sessionID)) return null;
+  if (user.active_session_expires_at && new Date(user.active_session_expires_at) <= new Date()) return null;
+  return user;
+}
+
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
@@ -769,7 +788,11 @@ function isSuperAdminRole(role) {
 const protectAdmin = (req, res, next) => {
   (async () => {
     const ppath = req.path;
-    const requiresAdmin = ppath === '/dashboard.html' || ppath === '/project-editor.html';
+    const requiresAdmin =
+      ppath === '/dashboard.html' ||
+      ppath === '/project-editor.html' ||
+      ppath === '/staging-dashboard.html' ||
+      ppath === '/staging-editor.html';
     const requiresSuperAdmin = ppath === '/superadmindb.html';
     if (!requiresAdmin && !requiresSuperAdmin) return next();
 
@@ -959,6 +982,213 @@ app.get('/api/audit-logs', requireSuperAdminApiAuth, async (req, res) => {
     res.status(500).json({ error: 'Database error' });
   }
 });
+
+// ---- Approval requests (Admin submit, Super Admin review) ----
+function normalizeApprovalStatus(value) {
+  const v = String(value || '').trim().toUpperCase();
+  if (v === 'APPROVED') return 'APPROVED';
+  if (v === 'REJECTED') return 'REJECTED';
+  return 'PENDING';
+}
+
+function normalizeWorkflowState(value) {
+  const v = String(value || '').trim().toUpperCase();
+  if (v === 'PUBLISHED') return 'PUBLISHED';
+  if (v === 'PENDING_APPROVAL') return 'PENDING_APPROVAL';
+  if (v === 'REJECTED') return 'REJECTED';
+  return 'DRAFT';
+}
+
+app.get('/api/approval-requests', requireSuperAdminApiAuth, async (req, res) => {
+  const q = String((req.query && req.query.q) || '').trim();
+  const status = normalizeApprovalStatus(req.query && req.query.status);
+  const limitRaw = parseOptionalInt(req.query && req.query.limit, 50);
+  const offsetRaw = parseOptionalInt(req.query && req.query.offset, 0);
+  const limit = Math.max(1, Math.min(200, limitRaw));
+  const offset = Math.max(0, offsetRaw);
+
+  const where = [];
+  const params = [];
+  const add = (val) => {
+    params.push(val);
+    return `$${params.length}`;
+  };
+
+  if (status) {
+    where.push(`ar.status = ${add(status)}`);
+  }
+
+  if (q) {
+    const like = `%${q}%`;
+    const p = add(like);
+    where.push(`(
+      ar.request_type ILIKE ${p}
+      OR COALESCE(u.username, '') ILIKE ${p}
+      OR COALESCE(pj.name, '') ILIKE ${p}
+      OR COALESCE(pj.number, '') ILIKE ${p}
+      OR COALESCE(ar.admin_comment, '') ILIKE ${p}
+    )`);
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  try {
+    const countRes = await db.query(
+      `SELECT COUNT(*)::int AS total
+       FROM approval_requests ar
+       LEFT JOIN users u ON u.id = ar.requester_id
+       LEFT JOIN projects pj ON pj.id = ar.project_id
+       ${whereSql}`,
+      params
+    );
+
+    const rowsRes = await db.query(
+      `SELECT
+         ar.id,
+         ar.created_at,
+         ar.project_id,
+         pj.number AS project_number,
+         pj.name AS project_name,
+         ar.request_type,
+         ar.status,
+         ar.admin_comment,
+         u.username AS requested_by
+       FROM approval_requests ar
+       LEFT JOIN users u ON u.id = ar.requester_id
+       LEFT JOIN projects pj ON pj.id = ar.project_id
+       ${whereSql}
+       ORDER BY ar.created_at DESC, ar.id DESC
+       LIMIT ${add(limit)} OFFSET ${add(offset)}`,
+      params
+    );
+
+    res.json({ total: countRes.rows[0]?.total ?? 0, rows: rowsRes.rows });
+  } catch (e) {
+    if (e && e.code === '42P01') {
+      return res.json({ total: 0, rows: [] });
+    }
+    console.error('Error listing approval requests:', e);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/api/projects/:id/request-approval', requireApiAuth, async (req, res) => {
+  const projectId = String(req.params.id || '').trim();
+  if (!projectId || projectId.includes('..') || projectId.includes('/') || projectId.includes('\\')) {
+    return res.status(400).json({ success: false, message: 'Invalid project id' });
+  }
+
+  try {
+    const projRes = await db.query('SELECT * FROM projects WHERE id = $1', [projectId]);
+    const project = projRes.rows[0];
+    if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
+
+    const currentState = normalizeWorkflowState(project.workflow_state);
+    if (currentState === 'PUBLISHED') {
+      return res.status(400).json({ success: false, message: 'Project is already published.' });
+    }
+    if (currentState === 'PENDING_APPROVAL') {
+      return res.status(400).json({ success: false, message: 'Project is already pending approval.' });
+    }
+
+    const pendingRes = await db.query(
+      'SELECT 1 FROM approval_requests WHERE project_id = $1 AND status = $2 LIMIT 1',
+      [projectId, 'PENDING']
+    );
+    if (pendingRes.rows.length > 0) {
+      return res.status(400).json({ success: false, message: 'There is already a pending approval request for this project.' });
+    }
+
+    const payload = {
+      project: {
+        id: project.id,
+        name: project.name,
+        number: project.number,
+        status: project.status,
+        workflow_state: currentState,
+      },
+      submitted_at: new Date().toISOString(),
+    };
+
+    const insertRes = await db.query(
+      `INSERT INTO approval_requests (requester_id, project_id, request_type, payload, status)
+       VALUES ($1, $2, $3, $4::jsonb, 'PENDING')
+       RETURNING id, created_at, project_id, request_type, status`,
+      [req.session.userId, projectId, 'project:publish', JSON.stringify(payload)]
+    );
+
+    await db.query("UPDATE projects SET workflow_state = 'PENDING_APPROVAL' WHERE id = $1", [projectId]);
+
+    try {
+      await insertAuditLog({
+        projectId,
+        userId: req.session.userId,
+        action: 'approval:requested',
+        message: 'Approval requested for project.',
+        metadata: { requestId: insertRes.rows[0]?.id, request_type: 'project:publish' },
+      });
+    } catch (e) {}
+
+    res.json({ success: true, request: insertRes.rows[0] });
+  } catch (e) {
+    console.error('Error creating approval request:', e);
+    res.status(500).json({ success: false, message: 'Database error' });
+  }
+});
+
+async function handleApprovalDecision(req, res, decision) {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ success: false, message: 'Invalid request id' });
+
+  const comment = req.body && typeof req.body === 'object' ? req.body.comment : null;
+  const commentValue = typeof comment === 'string' ? comment.trim() : '';
+
+  try {
+    const reqRes = await db.query('SELECT * FROM approval_requests WHERE id = $1', [id]);
+    const request = reqRes.rows[0];
+    if (!request) return res.status(404).json({ success: false, message: 'Request not found' });
+    if (String(request.status || '').toUpperCase() !== 'PENDING') {
+      return res.status(400).json({ success: false, message: 'Request is not pending.' });
+    }
+
+    const projectId = request.project_id ? String(request.project_id) : null;
+    if (!projectId) return res.status(400).json({ success: false, message: 'Request is missing project_id.' });
+
+    const nextStatus = decision === 'APPROVED' ? 'APPROVED' : 'REJECTED';
+    const nextWorkflow = decision === 'APPROVED' ? 'PUBLISHED' : 'REJECTED';
+
+    await db.query('BEGIN');
+    await db.query(
+      'UPDATE approval_requests SET status = $1, admin_comment = $2 WHERE id = $3',
+      [nextStatus, commentValue || null, id]
+    );
+    await db.query('UPDATE projects SET workflow_state = $1 WHERE id = $2', [nextWorkflow, projectId]);
+    await db.query('COMMIT');
+
+    try {
+      await insertAuditLog({
+        projectId,
+        userId: req.session.userId,
+        action: decision === 'APPROVED' ? 'approval:approved' : 'approval:rejected',
+        message: decision === 'APPROVED' ? 'Project approved and published.' : 'Project approval rejected.',
+        metadata: { requestId: id, comment: commentValue || null },
+      });
+    } catch (e) {}
+
+    res.json({ success: true });
+  } catch (e) {
+    try { await db.query('ROLLBACK'); } catch (rollbackErr) {}
+    console.error('Error processing approval decision:', e);
+    res.status(500).json({ success: false, message: 'Database error' });
+  }
+}
+
+app.post('/api/approval-requests/:id/approve', requireSuperAdminApiAuth, (req, res) =>
+  handleApprovalDecision(req, res, 'APPROVED')
+);
+app.post('/api/approval-requests/:id/reject', requireSuperAdminApiAuth, (req, res) =>
+  handleApprovalDecision(req, res, 'REJECTED')
+);
 
 // ---- User management (Super Admin only) ----
 function isValidUsername(username) {
@@ -1181,8 +1411,24 @@ app.use(async (req, res, next) => {
   const ppath = req.path || '';
   if (ppath !== '/dashboard.html' && ppath !== '/project-viewer.html') return next();
   try {
-    const projectId = await getProjectIdFromQuery(req);
-    if (!projectId) return next();
+    const projectToken = await getProjectIdFromQuery(req);
+    if (!projectToken) return next();
+
+    const project = await findProjectByIdOrNumber(projectToken);
+    if (!project) {
+      const safeId = String(projectToken || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      return res.status(404).send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Project not found</title></head><body><p style="font-family:Arial,sans-serif;padding:20px">Project not found: <strong>${safeId}</strong>.</p></body></html>`);
+    }
+
+    // Workflow visibility: only published projects are viewable publicly.
+    if (ppath === '/project-viewer.html' && String(project.workflow_state || 'DRAFT') !== 'PUBLISHED') {
+      const user = await getValidSessionUser(req);
+      if (!user || !isAdminRole(user.role)) {
+        return res.status(404).send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not published</title><style>html,body{height:100%;margin:0} .c{height:100vh;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif} .msg{font-style:italic;font-weight:700}</style></head><body><div class="c"><div class="msg">Project is not yet published.</div></div></body></html>`);
+      }
+    }
+
+    const projectId = project.id;
 
     const p = getProjectPaths(projectId);
     if (!p || !fs.existsSync(p.base)) {
@@ -1253,6 +1499,11 @@ projectRouter.use('/upload', async (req, res, next) => {
   const token = req.params.projectId;
   const project = await findProjectByIdOrNumber(token);
   const id = project ? project.id : token;
+  const workflow = project ? String(project.workflow_state || 'DRAFT') : 'DRAFT';
+  if (workflow !== 'PUBLISHED') {
+    const user = await getValidSessionUser(req);
+    if (!user || !isAdminRole(user.role)) return res.status(404).send('Not found');
+  }
   if (id.includes('..') || id.includes('/') || id.includes('\\')) return res.status(400).send('Invalid project');
   const p = getProjectPaths(id);
   if (!p) return res.status(400).send('Invalid project');
@@ -1263,6 +1514,11 @@ projectRouter.use(['/layouts', '/floorplans'], async (req, res, next) => {
   const token = req.params.projectId;
   const project = await findProjectByIdOrNumber(token);
   const id = project ? project.id : token;
+  const workflow = project ? String(project.workflow_state || 'DRAFT') : 'DRAFT';
+  if (workflow !== 'PUBLISHED') {
+    const user = await getValidSessionUser(req);
+    if (!user || !isAdminRole(user.role)) return res.status(404).send('Not found');
+  }
   if (id.includes('..') || id.includes('/') || id.includes('\\')) return res.status(400).send('Invalid project');
   const p = getProjectPaths(id);
   if (!p) return res.status(400).send('Invalid project');
@@ -1285,6 +1541,11 @@ projectRouter.use('/tiles', async (req, res, next) => {
   const token = req.params.projectId;
   const project = await findProjectByIdOrNumber(token);
   const id = project ? project.id : token;
+  const workflow = project ? String(project.workflow_state || 'DRAFT') : 'DRAFT';
+  if (workflow !== 'PUBLISHED') {
+    const user = await getValidSessionUser(req);
+    if (!user || !isAdminRole(user.role)) return res.status(404).send('Not found');
+  }
   if (id.includes('..') || id.includes('/') || id.includes('\\')) return res.status(400).send('Invalid project');
   const p = getProjectPaths(id);
   if (!p) return res.status(400).send('Invalid project');
@@ -1521,7 +1782,17 @@ async function ensureTilesForFilename(paths, filename) {
 // ---- Project APIs ----
 app.get('/api/projects', async (req, res) => {
   try {
-    const result = await db.query('SELECT * FROM projects ORDER BY created_at ASC');
+    const user = await getValidSessionUser(req);
+    if (user && isAdminRole(user.role)) {
+      // Admin/Super Admin can see all projects (including drafts).
+      const result = await db.query('SELECT * FROM projects ORDER BY created_at ASC');
+      return res.json(result.rows);
+    }
+
+    // Public listing is limited to published projects only.
+    const result = await db.query(
+      "SELECT * FROM projects WHERE workflow_state = 'PUBLISHED' ORDER BY created_at ASC"
+    );
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: 'Database error' });
@@ -1566,7 +1837,7 @@ app.post('/api/projects', requireApiAuth, async (req, res) => {
     ensureProjectDirs(finalId);
   
     const insertRes = await db.query(
-      'INSERT INTO projects (id, name, number, status) VALUES ($1, $2, $3, $4) RETURNING *',
+      "INSERT INTO projects (id, name, number, status, workflow_state) VALUES ($1, $2, $3, $4, 'DRAFT') RETURNING *",
       [finalId, trimmedName, trimmedNumber, normalizeProjectStatus(status)]
     );
   

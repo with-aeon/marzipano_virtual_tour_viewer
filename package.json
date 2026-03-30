@@ -8,7 +8,8 @@
     "seed:users": "node scripts/seed-users.js",
     "migrate:layouts": "node scripts/migrate-layouts-rename.js",
     "migrate:hotspots": "node scripts/migrate-hotspots.js",
-    "migrate:audit": "node scripts/migrate-audit-logs.js"
+    "migrate:audit": "node scripts/migrate-audit-logs.js",
+    "migrate:workflow": "node scripts/migrate-project-workflow-state.js"
   },
   "keywords": [],
   "author": "",

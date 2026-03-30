@@ -41,8 +41,8 @@ async function migrate() {
     try {
       // Upsert: Insert if not exists, otherwise do nothing
       const res = await db.query(
-        `INSERT INTO projects (id, name, number, status, created_at) 
-         VALUES ($1, $2, $3, $4, NOW()) 
+        `INSERT INTO projects (id, name, number, status, workflow_state, created_at) 
+         VALUES ($1, $2, $3, $4, 'PUBLISHED', NOW()) 
          ON CONFLICT (id) DO NOTHING 
          RETURNING id`,
         [p.id, p.name, p.number, p.status || 'on-going']

@@ -28,8 +28,10 @@ function cleanupSceneLinkedData(validImageNames) {
   try { cleanupBlurMasksForDeletedImages(validImageNames); } catch (e) {}
 }
 
+const IS_STAGING_EDITOR = window.location.pathname.split('/').pop() === 'staging-editor.html';
+
 if (!getProjectId()) {
-  window.location.replace('dashboard.html');
+  window.location.replace(IS_STAGING_EDITOR ? 'staging-dashboard.html' : 'dashboard.html');
 } else {
   initRename();
   initUpdate();

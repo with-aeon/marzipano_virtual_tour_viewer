@@ -12,6 +12,15 @@ import { initInitialView } from './features/initial-view.js';
 import { reloadInitialViews } from './marzipano-viewer.js';
 import { io } from '/socket.io/socket.io.esm.min.js';
 
+function normalizeWorkflowState(value) {
+  const v = String(value || '').trim().toUpperCase();
+  if (v === 'PENDING_APPROVAL') return 'PENDING_APPROVAL';
+  if (v === 'MODIFIED') return 'MODIFIED';
+  if (v === 'REJECTED') return 'REJECTED';
+  if (v === 'DRAFT') return 'DRAFT';
+  return 'PUBLISHED';
+}
+
 function resolveProjectId(projects, token) {
   const value = (token || '').trim();
   if (!value || !Array.isArray(projects)) return value;
@@ -23,15 +32,116 @@ function resolveProjectId(projects, token) {
   return match ? match.id : value;
 }
 
+function badgeText(state) {
+  if (state === 'PENDING_APPROVAL') return '[PENDING APPROVAL]';
+  if (state === 'MODIFIED') return '[MODIFIED]';
+  if (state === 'REJECTED') return '[REJECTED]';
+  if (state === 'DRAFT') return '[DRAFT]';
+  return '[APPROVED]';
+}
+
+function badgeClass(state) {
+  if (state === 'PENDING_APPROVAL') return 'workflow-badge-pending';
+  if (state === 'MODIFIED') return 'workflow-badge-modified';
+  if (state === 'REJECTED') return 'workflow-badge-rejected';
+  if (state === 'DRAFT') return 'workflow-badge-draft';
+  return 'workflow-badge-published';
+}
+
+function setBadge(state) {
+  const el = document.getElementById('workflow-badge');
+  if (!el) return;
+  el.hidden = false;
+  el.textContent = badgeText(state);
+  el.classList.remove('workflow-badge-draft', 'workflow-badge-pending', 'workflow-badge-modified', 'workflow-badge-rejected', 'workflow-badge-published');
+  el.classList.add(badgeClass(state));
+}
+
+async function requestApproval(projectId) {
+  const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/request-approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || data.error || `Request failed (HTTP ${res.status})`);
+  return data;
+}
+
+function configureRequestButton(state, canonicalId) {
+  const btn = document.getElementById('request-approval-btn');
+  if (!btn) return;
+
+  if (state === 'PENDING_APPROVAL') {
+    btn.hidden = false;
+    btn.disabled = true;
+    btn.textContent = 'Pending...';
+    btn.title = 'This project is already pending approval.';
+    return;
+  }
+  if (state === 'PUBLISHED') {
+    btn.hidden = true;
+    return;
+  }
+
+  btn.hidden = false;
+  btn.disabled = false;
+  btn.textContent = state === 'MODIFIED' ? 'Request Re-Approval' : 'Request Approval';
+  btn.title = state === 'MODIFIED'
+    ? 'Submit these modifications for Super Admin approval.'
+    : 'Submit this draft for Super Admin approval.';
+
+  btn.addEventListener('click', async () => {
+    const ok = window.confirm(
+      state === 'MODIFIED'
+        ? 'Submit these modifications for Super Admin approval? This will mark it as pending.'
+        : 'Submit this draft for Super Admin approval? This will mark it as pending.'
+    );
+    if (!ok) return;
+    btn.disabled = true;
+    try {
+      await requestApproval(canonicalId);
+      setBadge('PENDING_APPROVAL');
+      configureRequestButton('PENDING_APPROVAL', canonicalId);
+      window.alert('Approval request submitted. This project is now pending approval.');
+    } catch (e) {
+      btn.disabled = false;
+      window.alert(e.message || 'Failed to submit approval request.');
+    }
+  }, { once: true });
+}
+
+function setMenuTarget(state) {
+  const menu = document.getElementById('pano-menu-btn');
+  if (!menu) return;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const ret = String(params.get('return') || params.get('returnTo') || '').trim().toLowerCase();
+    if (ret === 'superadmindb') {
+      menu.href = 'superadmindb.html';
+      return;
+    }
+  } catch (e) {}
+  if (state !== 'PUBLISHED') {
+    menu.href = 'dashboard.html?view=staging';
+  } else {
+    menu.href = 'dashboard.html';
+  }
+}
+
+function setEditorTitle(state) {
+  document.title = state === 'PUBLISHED' ? 'QCDE - IPVT' : 'QCDE - IPVT (Staging)';
+}
+
 function cleanupSceneLinkedData(validImageNames) {
   try { cleanupHotspotsForDeletedImages(validImageNames); } catch (e) {}
   try { cleanupBlurMasksForDeletedImages(validImageNames); } catch (e) {}
 }
 
-const IS_STAGING_EDITOR = window.location.pathname.split('/').pop() === 'staging-editor.html';
-
 if (!getProjectId()) {
-  window.location.replace(IS_STAGING_EDITOR ? 'staging-dashboard.html' : 'dashboard.html');
+  const params = new URLSearchParams(window.location.search);
+  const view = String(params.get('view') || '').trim().toLowerCase();
+  window.location.replace(view === 'staging' ? 'dashboard.html?view=staging' : 'dashboard.html');
 } else {
   initRename();
   initUpdate();
@@ -47,9 +157,23 @@ if (!getProjectId()) {
       try {
         const res = await fetch('/api/projects');
         const projects = await res.json();
-        const id = resolveProjectId(projects, getProjectId());
+        const raw = getProjectId();
+        const id = resolveProjectId(projects, raw);
         const project = Array.isArray(projects) ? projects.find(p => p.id === id) : null;
-        if (project && project.name) setProjectName(project.name);
+        if (!project) {
+          const params = new URLSearchParams(window.location.search);
+          const view = String(params.get('view') || '').trim().toLowerCase();
+          window.alert('Project not found.');
+          window.location.replace(view === 'staging' ? 'dashboard.html?view=staging' : 'dashboard.html');
+          return;
+        }
+
+        const state = normalizeWorkflowState(project.workflow_state);
+        setBadge(state);
+        configureRequestButton(state, id);
+        setMenuTarget(state);
+        setEditorTitle(state);
+        if (project.name) setProjectName(project.name);
       } catch {}
     })();
     initViewer();
@@ -71,7 +195,13 @@ if (!getProjectId()) {
           const projId = resolveProjectId(projectsUpdate, raw);
           if (!projId) return;
           const proj = Array.isArray(projectsUpdate) ? projectsUpdate.find(p => p.id === projId) : null;
-          if (proj && proj.name) setProjectName(proj.name);
+          if (!proj) return;
+          if (proj.name) setProjectName(proj.name);
+          const state = normalizeWorkflowState(proj.workflow_state);
+          setBadge(state);
+          configureRequestButton(state, projId);
+          setMenuTarget(state);
+          setEditorTitle(state);
         });
       } catch (e) {}
     })();

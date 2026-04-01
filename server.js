@@ -61,6 +61,51 @@ async function ensureProjectWorkflowColumns() {
 }
 ensureProjectWorkflowColumns().catch(() => {});
 
+// Ensure audit logs can store project name/number snapshots.
+async function ensureAuditLogSnapshotColumns() {
+  try {
+    await db.query('ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS project_number VARCHAR(50)');
+    await db.query('ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS project_name VARCHAR(255)');
+  } catch (e) {
+    // Ignore if migrations aren't applied yet (table missing) or permissions prevent ALTER.
+    if (e && e.code === '42P01') return;
+    console.warn('[audit_logs] unable to ensure snapshot columns:', e.message || e);
+  }
+}
+ensureAuditLogSnapshotColumns().catch(() => {});
+
+// Ensure approval requests can be used as a notification source for admins.
+let approvalRequestsNotificationsSupported = null;
+async function ensureApprovalRequestNotificationColumns() {
+  try {
+    await db.query('ALTER TABLE approval_requests ADD COLUMN IF NOT EXISTS decided_at TIMESTAMP');
+    await db.query('ALTER TABLE approval_requests ADD COLUMN IF NOT EXISTS decided_by INTEGER REFERENCES users(id)');
+    await db.query('ALTER TABLE approval_requests ADD COLUMN IF NOT EXISTS requester_seen_at TIMESTAMP');
+    approvalRequestsNotificationsSupported = true;
+  } catch (e) {
+    // Ignore if migrations aren't applied yet (table missing) or permissions prevent ALTER.
+    if (e && e.code === '42P01') return;
+    console.warn('[approval_requests] unable to ensure notification columns:', e.message || e);
+  }
+}
+ensureApprovalRequestNotificationColumns().catch(() => {});
+
+async function supportsApprovalRequestNotifications() {
+  if (approvalRequestsNotificationsSupported !== null) return approvalRequestsNotificationsSupported;
+  try {
+    const result = await db.query(
+      `SELECT COUNT(*)::int AS cols
+       FROM information_schema.columns
+       WHERE table_name = 'approval_requests'
+         AND column_name IN ('decided_at', 'decided_by', 'requester_seen_at')`
+    );
+    approvalRequestsNotificationsSupported = (result.rows[0]?.cols ?? 0) >= 3;
+  } catch (e) {
+    approvalRequestsNotificationsSupported = false;
+  }
+  return approvalRequestsNotificationsSupported;
+}
+
 let auditLogsDbDisabled = false;
 
 /**
@@ -73,6 +118,8 @@ let auditLogsDbDisabled = false;
  *
  * @param {object} [params]
  * @param {string|null} [params.projectId] - associated project id (if any)
+ * @param {string|null} [params.projectNumber] - project number snapshot (optional)
+ * @param {string|null} [params.projectName] - project name snapshot (optional)
  * @param {number|null} [params.userId] - actor user id (if any)
  * @param {string} params.action - short action key, e.g. "project.create"
  * @param {string|null} [params.message] - human-readable description
@@ -80,23 +127,36 @@ let auditLogsDbDisabled = false;
  * @param {Date|string|number|null} [params.createdAt] - timestamp override (defaults to now)
  * @returns {Promise<void>}
  */
-async function insertAuditLog({ projectId, userId, action, message, metadata, createdAt } = {}) {
+async function insertAuditLog({ projectId, projectNumber, projectName, userId, action, message, metadata, createdAt } = {}) {
   if (auditLogsDbDisabled) return;
   if (!action) return;
   try {
     const created = createdAt ? new Date(createdAt) : new Date();
     const projectIdValue = projectId === undefined || projectId === null ? null : String(projectId);
+
+    let projectNumberValue = projectNumber === undefined || projectNumber === null ? null : String(projectNumber);
+    let projectNameValue = projectName === undefined || projectName === null ? null : String(projectName);
+
+    // If callers didn't provide a snapshot, best-effort lookup from the current projects table.
+    if (projectIdValue && (!projectNumberValue || !projectNameValue)) {
+      try {
+        const projRes = await db.query('SELECT number, name FROM projects WHERE id = $1', [projectIdValue]);
+        const proj = projRes.rows[0] || null;
+        if (proj) {
+          if (!projectNumberValue && proj.number) projectNumberValue = String(proj.number);
+          if (!projectNameValue && proj.name) projectNameValue = String(proj.name);
+        }
+      } catch (e) {
+        // ignore lookup failures (audit log still records action/message)
+      }
+    }
+
+    const metadataJson = JSON.stringify(metadata && typeof metadata === 'object' ? metadata : {});
+
     await db.query(
-      `INSERT INTO audit_logs (project_id, user_id, action, message, metadata, created_at)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
-      [
-        projectIdValue,
-        userId ? Number(userId) : null,
-        String(action),
-        message ? String(message) : null,
-        JSON.stringify(metadata && typeof metadata === 'object' ? metadata : {}),
-        created,
-      ]
+      `INSERT INTO audit_logs (project_id, project_number, project_name, user_id, action, message, metadata, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
+      [projectIdValue, projectNumberValue, projectNameValue, userId ? Number(userId) : null, String(action), message ? String(message) : null, metadataJson, created]
     );
   } catch (e) {
     // If schema migration hasn't been applied yet, avoid spamming errors on every request.
@@ -104,6 +164,29 @@ async function insertAuditLog({ projectId, userId, action, message, metadata, cr
       auditLogsDbDisabled = true;
       console.warn('[audit_logs] table not available; DB audit logging disabled until migrated.');
       return;
+    }
+    // If snapshot columns aren't present yet, fall back to the legacy insert.
+    if (e && e.code === '42703') {
+      try {
+        const created = createdAt ? new Date(createdAt) : new Date();
+        const projectIdValue = projectId === undefined || projectId === null ? null : String(projectId);
+        await db.query(
+          `INSERT INTO audit_logs (project_id, user_id, action, message, metadata, created_at)
+           VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
+          [
+            projectIdValue,
+            userId ? Number(userId) : null,
+            String(action),
+            message ? String(message) : null,
+            JSON.stringify(metadata && typeof metadata === 'object' ? metadata : {}),
+            created,
+          ]
+        );
+        return;
+      } catch (inner) {
+        console.warn('[audit_logs] legacy insert failed:', inner.message || inner);
+        return;
+      }
     }
     console.warn('[audit_logs] insert failed:', e.message || e);
   }
@@ -122,6 +205,43 @@ async function emitProjectsChanged() {
   } catch (e) {
     console.error('Socket emit error:', e);
   }
+}
+
+/**
+ * Marks a published project as "MODIFIED" (moves it back to staging) the first time it is edited.
+ * No-op for projects that are already non-published or already modified.
+ *
+ * This enables "re-approval" flows: once modified, admins can request approval again.
+ *
+ * @param {string} projectId
+ * @param {number|null} userId
+ * @param {object} [metadata]
+ * @returns {Promise<boolean>} true if the workflow state was changed
+ */
+async function markProjectModifiedIfPublished(projectId, userId, metadata = {}) {
+  if (!projectId) return false;
+  try {
+    const updated = await db.query(
+      "UPDATE projects SET workflow_state = 'MODIFIED', updated_at = NOW() WHERE id = $1 AND workflow_state = 'PUBLISHED' RETURNING id",
+      [String(projectId)]
+    );
+    if (updated.rowCount > 0) {
+      await emitProjectsChanged();
+      try {
+        await insertAuditLog({
+          projectId,
+          userId: userId ? Number(userId) : null,
+          action: 'project:modified',
+          message: 'Project modified; requires approval before publishing changes.',
+          metadata: metadata && typeof metadata === 'object' ? metadata : {},
+        });
+      } catch (e) {}
+      return true;
+    }
+  } catch (e) {
+    // Best-effort; do not break the caller.
+  }
+  return false;
 }
 
 /**
@@ -338,6 +458,11 @@ function appendAuditEntry(
   { dedupeWindowMs = 0, userId = null } = {}
 ) {
   if (!paths || !filename) return;
+  // Do not record audit entries for hotspot/blur interactions.
+  // These can be frequent "micro-actions" and would spam both the per-file archive logs
+  // and the Super Admin audit logs table.
+  const actionKey = String(action || '').trim().toLowerCase();
+  if (actionKey === 'hotspots' || actionKey === 'blur' || actionKey === 'initial-view') return;
   try {
     const existing = readAuditEntries(paths, kind, filename) || [];
     const nowIso = new Date().toISOString();
@@ -752,7 +877,7 @@ app.get('/api/me', (req, res) => {
     req.session.username = user.username;
     req.session.role = user.role;
 
-    res.json({ loggedIn: true, username: user.username, role: user.role });
+    res.json({ loggedIn: true, id: user.id, username: user.username, role: user.role });
   })().catch((e) => {
     console.error('/api/me error:', e);
     res.json({ loggedIn: false });
@@ -791,6 +916,7 @@ const protectAdmin = (req, res, next) => {
     const requiresAdmin =
       ppath === '/dashboard.html' ||
       ppath === '/project-editor.html' ||
+      // Backward-compatible redirects for removed pages.
       ppath === '/staging-dashboard.html' ||
       ppath === '/staging-editor.html';
     const requiresSuperAdmin = ppath === '/superadmindb.html';
@@ -831,6 +957,21 @@ const protectAdmin = (req, res, next) => {
   });
 };
 app.use(protectAdmin);
+
+// Backward-compatible redirects (staging pages were merged into the main pages).
+app.get('/staging-dashboard.html', (req, res) => {
+  res.redirect('/dashboard.html?view=staging');
+});
+app.get('/staging-editor.html', (req, res) => {
+  try {
+    const url = new URL(req.originalUrl, 'http://localhost');
+    if (!url.searchParams.get('view')) url.searchParams.set('view', 'staging');
+    const qs = url.searchParams.toString();
+    res.redirect(qs ? `/project-editor.html?${qs}` : '/project-editor.html');
+  } catch (e) {
+    res.redirect('/dashboard.html?view=staging');
+  }
+});
 
 /**
  * Protects write APIs that require an authenticated Admin/Super Admin.
@@ -915,6 +1056,158 @@ function parseOptionalInt(value, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+// ---- Admin notifications (derived from approval_requests decisions) ----
+app.get('/api/notifications', requireApiAuth, async (req, res) => {
+  const includeSeenRaw = String((req.query && req.query.includeSeen) || '').trim().toLowerCase();
+  const includeSeen = includeSeenRaw === '1' || includeSeenRaw === 'true' || includeSeenRaw === 'yes';
+  const limitRaw = parseOptionalInt(req.query && req.query.limit, 20);
+  const limit = Math.max(1, Math.min(100, limitRaw));
+  const userId = Number(req.session.userId);
+
+  try {
+    const supportsSeen = await supportsApprovalRequestNotifications();
+
+    if (supportsSeen) {
+      const unseenRes = await db.query(
+        `SELECT COUNT(*)::int AS unseen
+         FROM approval_requests
+         WHERE requester_id = $1
+           AND UPPER(status) <> 'PENDING'
+           AND requester_seen_at IS NULL`,
+        [userId]
+      );
+
+      const where = [
+        'ar.requester_id = $1',
+        "UPPER(ar.status) <> 'PENDING'",
+      ];
+      const params = [userId];
+
+      if (!includeSeen) {
+        where.push('ar.requester_seen_at IS NULL');
+      }
+
+      params.push(limit);
+      const rowsRes = await db.query(
+        `SELECT
+           ar.id,
+           ar.project_id,
+           ar.request_type,
+           ar.status,
+           ar.admin_comment,
+           ar.created_at,
+           ar.decided_at,
+           ar.requester_seen_at,
+           COALESCE(
+             ar.decided_at,
+             to_timestamp((NULLIF(ar.payload->>'decided_at_ms','')::double precision) / 1000.0),
+             ar.created_at
+           ) AS event_at,
+           COALESCE(ar.payload->'project'->>'number', pj.number, '') AS project_number,
+           COALESCE(ar.payload->'project'->>'name', pj.name, '') AS project_name,
+           du.username AS decided_by
+         FROM approval_requests ar
+         LEFT JOIN projects pj ON pj.id = ar.project_id
+         LEFT JOIN users du ON du.id = ar.decided_by
+         WHERE ${where.join(' AND ')}
+         ORDER BY COALESCE(ar.decided_at, ar.created_at) DESC, ar.id DESC
+         LIMIT $2`,
+        params
+      );
+
+      return res.json({
+        supports_seen: true,
+        unseen: unseenRes.rows[0]?.unseen ?? 0,
+        rows: rowsRes.rows
+      });
+    }
+
+    // Fallback: DB hasn't been migrated yet to support "seen" tracking.
+    // Still return the latest decisions so the admin can view them. The frontend will
+    // compute "unseen" client-side using localStorage (best-effort).
+    const rowsRes = await db.query(
+      `SELECT
+         ar.id,
+         ar.project_id,
+         ar.request_type,
+         ar.status,
+         ar.admin_comment,
+         ar.created_at,
+         to_timestamp((NULLIF(ar.payload->>'decided_at_ms','')::double precision) / 1000.0) AS decided_at,
+         NULL::timestamp AS requester_seen_at,
+         COALESCE(
+           to_timestamp((NULLIF(ar.payload->>'decided_at_ms','')::double precision) / 1000.0),
+           ar.created_at
+         ) AS event_at,
+         COALESCE(ar.payload->'project'->>'number', pj.number, '') AS project_number,
+         COALESCE(ar.payload->'project'->>'name', pj.name, '') AS project_name,
+         COALESCE(NULLIF(ar.payload->>'decided_by',''), NULL)::text AS decided_by
+       FROM approval_requests ar
+       LEFT JOIN projects pj ON pj.id = ar.project_id
+       WHERE ar.requester_id = $1
+         AND UPPER(ar.status) <> 'PENDING'
+       ORDER BY ar.created_at DESC, ar.id DESC
+       LIMIT $2`,
+      [userId, limit]
+    );
+
+    res.json({ supports_seen: false, unseen: 0, rows: rowsRes.rows });
+  } catch (e) {
+    if (e && e.code === '42P01') {
+      return res.json({ supports_seen: false, unseen: 0, rows: [] });
+    }
+    console.error('Error listing notifications:', e);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+app.post('/api/notifications/:id/read', requireApiAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const userId = Number(req.session.userId);
+  if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ success: false, message: 'Invalid notification id' });
+
+  try {
+    if (!(await supportsApprovalRequestNotifications())) {
+      return res.json({ success: true, updated: 0 });
+    }
+    const result = await db.query(
+      'UPDATE approval_requests SET requester_seen_at = NOW() WHERE id = $1 AND requester_id = $2 AND requester_seen_at IS NULL',
+      [id, userId]
+    );
+    res.json({ success: true, updated: result.rowCount });
+  } catch (e) {
+    if (e && e.code === '42P01') {
+      return res.json({ success: true, updated: 0 });
+    }
+    console.error('Error marking notification read:', e);
+    res.status(500).json({ success: false, message: 'Database error' });
+  }
+});
+
+app.post('/api/notifications/read-all', requireApiAuth, async (req, res) => {
+  const userId = Number(req.session.userId);
+  try {
+    if (!(await supportsApprovalRequestNotifications())) {
+      return res.json({ success: true, updated: 0 });
+    }
+    const result = await db.query(
+      `UPDATE approval_requests
+       SET requester_seen_at = NOW()
+       WHERE requester_id = $1
+         AND UPPER(status) <> 'PENDING'
+         AND requester_seen_at IS NULL`,
+      [userId]
+    );
+    res.json({ success: true, updated: result.rowCount });
+  } catch (e) {
+    if (e && e.code === '42P01') {
+      return res.json({ success: true, updated: 0 });
+    }
+    console.error('Error marking notifications read:', e);
+    res.status(500).json({ success: false, message: 'Database error' });
+  }
+});
+
 app.get('/api/audit-logs', requireSuperAdminApiAuth, async (req, res) => {
   const q = String((req.query && req.query.q) || '').trim();
   const limitRaw = parseOptionalInt(req.query && req.query.limit, 50);
@@ -929,6 +1222,16 @@ app.get('/api/audit-logs', requireSuperAdminApiAuth, async (req, res) => {
     return `$${params.length}`;
   };
 
+  // Exclude micro-actions from the Super Admin audit view.
+  // (These can be very noisy and aren't meaningful for oversight.)
+  where.push(
+    `NOT (
+      a.action ILIKE ${add('%hotspots%')}
+      OR a.action ILIKE ${add('%blur%')}
+      OR a.action ILIKE ${add('%initial-view%')}
+    )`
+  );
+
   if (q) {
     const like = `%${q}%`;
     const p = add(like);
@@ -936,8 +1239,8 @@ app.get('/api/audit-logs', requireSuperAdminApiAuth, async (req, res) => {
       a.action ILIKE ${p}
       OR a.message ILIKE ${p}
       OR COALESCE(u.username, '') ILIKE ${p}
-      OR COALESCE(pj.name, '') ILIKE ${p}
-      OR COALESCE(pj.number, '') ILIKE ${p}
+      OR COALESCE(a.project_name, pj.name, '') ILIKE ${p}
+      OR COALESCE(a.project_number, pj.number, '') ILIKE ${p}
     )`);
   }
 
@@ -960,8 +1263,8 @@ app.get('/api/audit-logs', requireSuperAdminApiAuth, async (req, res) => {
          a.action,
          a.message,
          a.project_id,
-         pj.number AS project_number,
-         pj.name AS project_name,
+         COALESCE(a.project_number, pj.number) AS project_number,
+         COALESCE(a.project_name, pj.name) AS project_name,
          u.username AS created_by
        FROM audit_logs a
        LEFT JOIN users u ON u.id = a.user_id
@@ -995,6 +1298,7 @@ function normalizeWorkflowState(value) {
   const v = String(value || '').trim().toUpperCase();
   if (v === 'PUBLISHED') return 'PUBLISHED';
   if (v === 'PENDING_APPROVAL') return 'PENDING_APPROVAL';
+  if (v === 'MODIFIED') return 'MODIFIED';
   if (v === 'REJECTED') return 'REJECTED';
   return 'DRAFT';
 }
@@ -1085,7 +1389,7 @@ app.post('/api/projects/:id/request-approval', requireApiAuth, async (req, res) 
 
     const currentState = normalizeWorkflowState(project.workflow_state);
     if (currentState === 'PUBLISHED') {
-      return res.status(400).json({ success: false, message: 'Project is already published.' });
+      return res.status(400).json({ success: false, message: 'Project is already published. Make changes first to request approval again.' });
     }
     if (currentState === 'PENDING_APPROVAL') {
       return res.status(400).json({ success: false, message: 'Project is already pending approval.' });
@@ -1156,12 +1460,37 @@ async function handleApprovalDecision(req, res, decision) {
 
     const nextStatus = decision === 'APPROVED' ? 'APPROVED' : 'REJECTED';
     const nextWorkflow = decision === 'APPROVED' ? 'PUBLISHED' : 'REJECTED';
+    const supportsNotifications = await supportsApprovalRequestNotifications();
+    const decisionPatch = JSON.stringify({
+      decided_at_ms: Date.now(),
+      decided_by: req.session && req.session.username ? String(req.session.username) : null,
+      decision: nextStatus,
+      admin_comment: commentValue || null,
+    });
 
     await db.query('BEGIN');
-    await db.query(
-      'UPDATE approval_requests SET status = $1, admin_comment = $2 WHERE id = $3',
-      [nextStatus, commentValue || null, id]
-    );
+    if (supportsNotifications) {
+      await db.query(
+        `UPDATE approval_requests
+         SET status = $1,
+             admin_comment = $2,
+             decided_at = NOW(),
+             decided_by = $3,
+             requester_seen_at = NULL,
+             payload = COALESCE(payload, '{}'::jsonb) || $5::jsonb
+         WHERE id = $4`,
+        [nextStatus, commentValue || null, Number(req.session.userId) || null, id, decisionPatch]
+      );
+    } else {
+      await db.query(
+        `UPDATE approval_requests
+         SET status = $1,
+             admin_comment = $2,
+             payload = COALESCE(payload, '{}'::jsonb) || $4::jsonb
+         WHERE id = $3`,
+        [nextStatus, commentValue || null, id, decisionPatch]
+      );
+    }
     await db.query('UPDATE projects SET workflow_state = $1 WHERE id = $2', [nextWorkflow, projectId]);
     await db.query('COMMIT');
 
@@ -1283,9 +1612,10 @@ app.patch('/api/users/:id', requireSuperAdminApiAuth, async (req, res) => {
   }
 
   const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const hasUsername = Object.prototype.hasOwnProperty.call(body, 'username');
   const hasRole = Object.prototype.hasOwnProperty.call(body, 'role');
   const hasActive = Object.prototype.hasOwnProperty.call(body, 'is_active');
-  if (!hasRole && !hasActive) {
+  if (!hasUsername && !hasRole && !hasActive) {
     return res.status(400).json({ success: false, message: 'No changes provided' });
   }
 
@@ -1300,6 +1630,15 @@ app.patch('/api/users/:id', requireSuperAdminApiAuth, async (req, res) => {
   if (hasRole) {
     nextRole = normalizeUserRole(body.role);
     updates.push(`role = ${add(nextRole)}`);
+  }
+
+  let nextUsername = null;
+  if (hasUsername) {
+    if (!isValidUsername(body.username)) {
+      return res.status(400).json({ success: false, message: 'Invalid username' });
+    }
+    nextUsername = String(body.username).trim();
+    updates.push(`username = ${add(nextUsername)}`);
   }
 
   let nextIsActive = null;
@@ -1320,6 +1659,13 @@ app.patch('/api/users/:id', requireSuperAdminApiAuth, async (req, res) => {
       return res.status(403).json({ success: false, message: 'Super Admin accounts cannot be modified.' });
     }
 
+    if (nextUsername && nextUsername !== before.username) {
+      const exists = await db.query('SELECT 1 FROM users WHERE username = $1 AND id <> $2', [nextUsername, id]);
+      if (exists.rows.length > 0) {
+        return res.status(409).json({ success: false, message: 'Username already exists' });
+      }
+    }
+
     const sql = `UPDATE users SET ${updates.join(', ')} WHERE id = ${add(id)} RETURNING id, username, role, is_active, created_at`;
     const updatedRes = await db.query(sql, params);
     const updated = updatedRes.rows[0];
@@ -1329,10 +1675,12 @@ app.patch('/api/users/:id', requireSuperAdminApiAuth, async (req, res) => {
         projectId: null,
         userId: req.session.userId,
         action: 'user:update',
-        message: `User updated: ${updated.username}.`,
+        message: nextUsername && nextUsername !== before.username
+          ? `Username changed: ${before.username} -> ${updated.username}.`
+          : `User updated: ${updated.username}.`,
         metadata: {
-          before: { role: before.role, is_active: before.is_active },
-          after: { role: updated.role, is_active: updated.is_active },
+          before: { username: before.username, role: before.role, is_active: before.is_active },
+          after: { username: updated.username, role: updated.role, is_active: updated.is_active },
           targetUser: { id: updated.id, username: updated.username },
         },
       });
@@ -1894,52 +2242,47 @@ app.put('/api/projects/:id', requireApiAuth, async (req, res) => {
     if (conflictRes.rows.length > 0) {
       return res.status(409).json({ success: false, message: 'A project with this name already exists' });
     }
-
-    let newId = sanitizeProjectId(trimmedName);
-    if (newId !== oldId) {
-      let suffix = 0;
-      let baseId = newId;
-      while (true) {
-        const check = await db.query('SELECT 1 FROM projects WHERE id = $1 AND id != $2', [newId, oldId]);
-        if (check.rows.length === 0) break;
-        suffix++;
-        newId = `${baseId}-${suffix}`;
-      }
-    }
-
-    if (newId !== oldId) {
-      const oldPaths = getProjectPaths(oldId);
-      const newPaths = getProjectPaths(newId);
-      if (oldPaths && newPaths && fs.existsSync(oldPaths.base)) {
-        if (fs.existsSync(newPaths.base)) {
-          return res.status(409).json({ success: false, message: `A project folder "${newId}" already exists` });
-        }
-        try {
-          fs.renameSync(oldPaths.base, newPaths.base);
-        } catch (e) {
-          console.error('Error renaming project folder:', e);
-          return res.status(500).json({ success: false, message: `Failed to rename folder: ${e.message || e}` });
-        }
-      }
-    }
   
     const updateRes = await db.query(
-      'UPDATE projects SET id = $1, name = $2, number = $3, status = $4, updated_at = NOW() WHERE id = $5 RETURNING *',
-      [newId, trimmedName, trimmedNumber, normalizeProjectStatus(status || currentProject.status), oldId]
+      `UPDATE projects
+       SET name = $1,
+           number = $2,
+           status = $3,
+           workflow_state = CASE
+             WHEN workflow_state = 'PUBLISHED' AND $5::boolean THEN 'MODIFIED'
+             ELSE workflow_state
+           END,
+           updated_at = NOW()
+       WHERE id = $4
+       RETURNING *`,
+      [
+        trimmedName,
+        trimmedNumber,
+        normalizeProjectStatus(status || currentProject.status),
+        oldId,
+        (() => {
+          const nextStatus = normalizeProjectStatus(status || currentProject.status);
+          const prevStatus = normalizeProjectStatus(currentProject.status);
+          const renamed = trimmedName !== currentProject.name || trimmedNumber !== currentProject.number;
+          const statusChanged = nextStatus !== prevStatus;
+          return String(currentProject.workflow_state || '').toUpperCase() === 'PUBLISHED' && (renamed || statusChanged);
+        })(),
+      ]
     );
 
     await emitProjectsChanged();
+
+    const nextStatus = normalizeProjectStatus(status || currentProject.status);
+    const prevStatus = normalizeProjectStatus(currentProject.status);
+    const renamed = trimmedName !== currentProject.name || trimmedNumber !== currentProject.number;
+
     await insertAuditLog({
-      projectId: newId,
+      projectId: oldId,
+      ...(renamed ? { projectName: currentProject.name, projectNumber: currentProject.number } : {}),
       userId: req.session.userId,
-      action: newId !== oldId ? 'project:rename' : 'project:update',
-      message:
-        newId !== oldId
-          ? `Project renamed: ${oldId} -> ${newId}.`
-          : `Project updated: ${newId}.`,
+      action: renamed ? 'project:rename' : (nextStatus !== prevStatus ? 'project:status' : 'project:update'),
+      message: renamed ? `Renamed to ${trimmedName}.` : (nextStatus !== prevStatus ? `Status updated to ${nextStatus}.` : `Project updated: ${oldId}.`),
       metadata: {
-        oldId,
-        newId,
         old: {
           name: currentProject.name,
           number: currentProject.number,
@@ -1948,10 +2291,22 @@ app.put('/api/projects/:id', requireApiAuth, async (req, res) => {
         new: {
           name: trimmedName,
           number: trimmedNumber,
-          status: normalizeProjectStatus(status || currentProject.status),
+          status: nextStatus,
         },
       },
     });
+    // If this update moved a published project back to MODIFIED, record a single "modified" audit entry.
+    if (String(currentProject.workflow_state || '').toUpperCase() === 'PUBLISHED' && String(updateRes.rows[0]?.workflow_state || '').toUpperCase() === 'MODIFIED') {
+      try {
+        await insertAuditLog({
+          projectId: oldId,
+          userId: req.session.userId,
+          action: 'project:modified',
+          message: 'Project modified; requires approval before publishing changes.',
+          metadata: { via: 'project:update' },
+        });
+      } catch (e) {}
+    }
     res.json(updateRes.rows[0]);
 
   } catch (err) {
@@ -2093,6 +2448,9 @@ app.post('/upload', requireApiAuth, upload.array("panorama", 20), async (req, re
         );
       });
     } catch (e) {}
+
+    // If this was a published project, move it back to staging as MODIFIED.
+    await markProjectModifiedIfPublished(paths.projectId, req.session.userId, { via: 'panorama:upload' });
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch (rollbackErr) {}
     // Best-effort cleanup of the just-uploaded files if we couldn't persist to the DB.
@@ -2214,6 +2572,7 @@ async function handleLayoutUpload(req, res) {
       );
     });
   } catch (e) {}
+  await markProjectModifiedIfPublished(paths.projectId, req.session.userId, { via: 'layout:upload' });
   let updatedOrder = null;
   try {
     updatedOrder = floorplanOrderAppend(paths, filenames);
@@ -2286,6 +2645,7 @@ async function handleLayoutUpdate(req, res) {
           { userId: req.session.userId }
         );
       } catch (e) {}
+      await markProjectModifiedIfPublished(paths.projectId, req.session.userId, { via: 'layout:update' });
       return res.json({
         success: true,
         message: 'Layout updated successfully',
@@ -2343,6 +2703,7 @@ async function handleLayoutUpdate(req, res) {
       console.error('Socket emit error:', e);
     }
 
+    await markProjectModifiedIfPublished(paths.projectId, req.session.userId, { via: 'layout:update' });
     return res.json({
       success: true,
       message: 'Layout updated successfully',
@@ -2410,6 +2771,7 @@ async function handleLayoutRename(req, res) {
         { userId: req.session.userId }
       );
     } catch (e) {}
+    markProjectModifiedIfPublished(paths.projectId, req.session.userId, { via: 'layout:rename' }).catch(() => {});
     return res.json({ success: true, message: 'Layout renamed successfully', oldFilename, newFilename });
   });
 }
@@ -2445,6 +2807,7 @@ async function handleLayoutsOrder(req, res) {
     const dir = path.dirname(paths.layoutOrderPath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     writeFloorplanOrder(paths.layoutOrderPath, body.order);
+    await markProjectModifiedIfPublished(paths.projectId, req.session.userId, { via: 'layout:order' });
     res.json({ success: true });
     try {
       io.to(`project:${paths.projectId}`).emit('floorplans:order', { order: body.order });
@@ -2511,6 +2874,7 @@ app.put('/api/panos/order', requireApiAuth, async (req, res) => {
       const filename = body.order[i];
       await db.query('UPDATE panoramas SET rank = $1 WHERE project_id = $2 AND filename = $3', [i, paths.projectId, filename]);
     }
+    await markProjectModifiedIfPublished(paths.projectId, req.session.userId, { via: 'panorama:order' });
     res.json({ success: true });
     try { io.to(`project:${paths.projectId}`).emit('panos:order', { order: body.order }); } catch (e) { console.error('Socket emit error:', e); }
   } catch (e) {
@@ -2623,6 +2987,7 @@ app.put('/upload/rename', requireApiAuth, async (req, res) => {
         { userId: req.session.userId }
       );
     } catch (e) {}
+    await markProjectModifiedIfPublished(paths.projectId, req.session.userId, { via: 'panorama:rename' });
     try { io.to(`project:${paths.projectId}`).emit('pano:renamed', { oldFilename, newFilename }); } catch (e) { console.error('Socket emit error:', e); }
     res.json({
       success: true,
@@ -2687,6 +3052,7 @@ app.put('/upload/update', requireApiAuth, upload.single('panorama'), async (req,
       });
 
       await db.query('UPDATE panoramas SET filename = $1 WHERE project_id = $2 AND filename = $3', [newFilename, paths.projectId, oldFilename]);
+      await markProjectModifiedIfPublished(paths.projectId, req.session.userId, { via: 'panorama:update' });
 
       try {
         renameAuditLog(paths, 'pano', oldFilename, newFilename);
@@ -2932,6 +3298,9 @@ async function handleLayoutHotspotsPost(req, res) {
       await fs.promises.writeFile(paths.layoutHotspotsPath, json, 'utf8');
     } catch (e) {}
 
+    if (changed.length > 0) {
+      await markProjectModifiedIfPublished(paths.projectId, req.session.userId, { via: 'layout-hotspots:update' });
+    }
     res.json({ success: true, unchanged: changed.length === 0 });
     if (changed.length === 0) return;
 
@@ -2994,6 +3363,9 @@ app.post('/api/blur-masks', requireApiAuth, async (req, res) => {
         [maskData, paths.projectId, filename]);
     }
 
+    if (changed.length > 0) {
+      await markProjectModifiedIfPublished(paths.projectId, req.session.userId, { via: 'blur-masks:update' });
+    }
     res.json({ success: true, unchanged: changed.length === 0 });
 
     if (changed.length === 0) return;
@@ -3110,6 +3482,9 @@ app.post('/api/hotspots', requireApiAuth, async (req, res) => {
       await fs.promises.writeFile(paths.hotspotsPath, json, 'utf8');
     } catch (e) {}
 
+    if (changed.length > 0) {
+      await markProjectModifiedIfPublished(paths.projectId, req.session.userId, { via: 'hotspots:update' });
+    }
     res.json({ success: true, unchanged: changed.length === 0 });
     if (changed.length === 0) return;
 

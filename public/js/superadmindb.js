@@ -32,15 +32,298 @@ document.addEventListener('DOMContentLoaded', async () => {
     const navItems = document.querySelectorAll('.nav-item');
     const sections = document.querySelectorAll('.content-section');
 
+    // ---- Projects (overview) UI wiring ----
+    const projectsListEl = document.getElementById('sa-project-list');
+    const projectsEmptyStateEl = document.getElementById('sa-projects-empty-state');
+    const projectsSearchInput = document.getElementById('sa-project-search-input');
+    const projectsSearchBtn = document.getElementById('sa-project-search-btn');
+
+    const renameProjectModal = document.getElementById('sa-rename-project-modal');
+    const renameProjectForm = document.getElementById('sa-rename-project-form');
+    const renameProjectIdInput = document.getElementById('sa-rename-project-id');
+    const renameProjectNumberInput = document.getElementById('sa-rename-project-number');
+    const renameProjectNameInput = document.getElementById('sa-rename-project-name');
+    const renameProjectErrorEl = document.getElementById('sa-rename-project-error');
+    const renameProjectCancelBtn = document.getElementById('sa-rename-project-cancel');
+    const renameProjectSaveBtn = document.getElementById('sa-rename-project-save');
+
+    let projectsLoadedOnce = false;
+    let projectsQuery = '';
+    let projectsAll = [];
+
+    const ALLOWED_PROJECT_STATUSES = new Set(['on-going', 'completed']);
+    const MAX_PROJECT_NAME_LENGTH = 150;
+    const MAX_PROJECT_NUMBER_LENGTH = 20;
+
+    function normalizeWorkflowState(value) {
+        const v = String(value || '').trim().toUpperCase();
+        if (v === 'PENDING_APPROVAL') return 'PENDING_APPROVAL';
+        if (v === 'REJECTED') return 'REJECTED';
+        if (v === 'MODIFIED') return 'MODIFIED';
+        if (v === 'DRAFT') return 'DRAFT';
+        return 'PUBLISHED';
+    }
+
+    function workflowLabel(state) {
+        if (state === 'PENDING_APPROVAL') return 'Pending';
+        if (state === 'REJECTED') return 'Rejected';
+        if (state === 'MODIFIED') return 'Modified';
+        if (state === 'DRAFT') return 'Draft';
+        return 'Published';
+    }
+
+    function normalizeProjectStatus(status) {
+        const s = String(status || '').trim().toLowerCase();
+        if (!s) return 'on-going';
+        if (ALLOWED_PROJECT_STATUSES.has(s)) return s;
+        if (s === 'ongoing') return 'on-going';
+        if (s === 'in-progress' || s === 'in progress') return 'on-going';
+        return 'on-going';
+    }
+
+    function sanitizeProjectNumber(value) {
+        return String(value || '')
+            .replace(/[^A-Za-z0-9-]+/g, '')
+            .slice(0, MAX_PROJECT_NUMBER_LENGTH);
+    }
+
+    function validateProjectName(name) {
+        const trimmed = String(name || '').trim();
+        if (!trimmed) return 'Project name is required.';
+        if (trimmed.length > MAX_PROJECT_NAME_LENGTH) return `Project name must be ${MAX_PROJECT_NAME_LENGTH} characters or less.`;
+        if (/[<>:"/\\|?*]/.test(trimmed)) return 'Project name cannot contain: < > : " / \\ | ? *';
+        return null;
+    }
+
+    async function fetchAllProjects() {
+        const res = await fetch('/api/projects', { headers: { 'Accept': 'application/json' } });
+        const data = await res.json().catch(() => []);
+        if (!res.ok) throw new Error((data && (data.message || data.error)) || `Failed to load projects (HTTP ${res.status})`);
+        return Array.isArray(data) ? data : [];
+    }
+
+    async function renameProject({ id, name, number, status }) {
+        const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({
+                name: String(name || '').trim(),
+                number: String(number || '').trim(),
+                status: normalizeProjectStatus(status),
+            }),
+        });
+        const raw = await res.text().catch(() => '');
+        let data = null;
+        try { data = raw ? JSON.parse(raw) : null; } catch (e) { data = null; }
+        if (!res.ok) {
+            const msg = (data && (data.message || data.error)) || `Failed to update project (HTTP ${res.status})`;
+            throw new Error(msg);
+        }
+        return data;
+    }
+
+    async function updateProjectStatus(project, nextStatus) {
+        const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({
+                name: String(project.name || '').trim(),
+                number: String(project.number || '').trim(),
+                status: normalizeProjectStatus(nextStatus),
+            }),
+        });
+        const raw = await res.text().catch(() => '');
+        let data = null;
+        try { data = raw ? JSON.parse(raw) : null; } catch (e) { data = null; }
+        if (!res.ok) {
+            const msg = (data && (data.message || data.error)) || `Failed to update status (HTTP ${res.status})`;
+            throw new Error(msg);
+        }
+        return data;
+    }
+
+    function openRenameProjectModal(project) {
+        if (!renameProjectModal || !renameProjectIdInput || !renameProjectNameInput || !renameProjectNumberInput) return;
+        if (renameProjectErrorEl) renameProjectErrorEl.textContent = '';
+        renameProjectIdInput.value = project.id;
+        renameProjectNumberInput.value = project.number || '';
+        renameProjectNameInput.value = project.name || '';
+        renameProjectModal.classList.add('visible');
+        renameProjectModal.setAttribute('aria-hidden', 'false');
+        renameProjectNumberInput.focus();
+    }
+
+    function closeRenameProjectModal() {
+        if (!renameProjectModal) return;
+        renameProjectModal.classList.remove('visible');
+        renameProjectModal.setAttribute('aria-hidden', 'true');
+        if (renameProjectErrorEl) renameProjectErrorEl.textContent = '';
+    }
+
+    function renderProjects(projects) {
+        if (!projectsListEl) return;
+        projectsListEl.innerHTML = '';
+
+        const rows = Array.isArray(projects) ? projects : [];
+        if (projectsEmptyStateEl) {
+            projectsEmptyStateEl.style.display = rows.length === 0 ? 'block' : 'none';
+        }
+        if (rows.length === 0) return;
+
+        for (const project of rows) {
+            const state = normalizeWorkflowState(project && project.workflow_state);
+
+            const row = document.createElement('div');
+            row.className = 'project-row';
+            row.dataset.projectId = project.id;
+
+            const numberDisplay = document.createElement('div');
+            numberDisplay.className = 'project-number-display';
+            numberDisplay.textContent = project.number || '';
+            const numberCell = document.createElement('div');
+            numberCell.className = 'project-number-cell';
+            numberCell.appendChild(numberDisplay);
+
+            const nameDisplay = document.createElement('div');
+            nameDisplay.className = 'project-name-display';
+            nameDisplay.textContent = project.name || '';
+            const nameCell = document.createElement('div');
+            nameCell.className = 'project-name-cell';
+            nameCell.appendChild(nameDisplay);
+
+            const statusCell = document.createElement('div');
+            statusCell.className = 'project-status-cell';
+            const statusSelect = document.createElement('select');
+            statusSelect.className = 'project-status-display project-status-select';
+            const statusOptions = [
+                { value: 'on-going', label: 'On-going' },
+                { value: 'completed', label: 'Completed' },
+            ];
+            statusOptions.forEach(({ value, label }) => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = label;
+                statusSelect.appendChild(option);
+            });
+            statusSelect.value = normalizeProjectStatus(project.status);
+            statusCell.appendChild(statusSelect);
+
+            statusSelect.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+
+            statusSelect.addEventListener('change', async () => {
+                const previous = normalizeProjectStatus(project.status);
+                const next = normalizeProjectStatus(statusSelect.value);
+                if (next === previous) return;
+                statusSelect.disabled = true;
+                try {
+                    const updated = await updateProjectStatus(project, next);
+                    projectsAll = projectsAll.map((p) => (p.id === project.id ? { ...p, ...updated } : p));
+                    applyProjectsSearch();
+                } catch (e) {
+                    statusSelect.value = previous;
+                    window.alert(e.message || 'Failed to update status.');
+                } finally {
+                    statusSelect.disabled = false;
+                }
+            });
+
+            const actionsCell = document.createElement('div');
+            actionsCell.className = 'project-actions-cell';
+
+            const viewBtn = document.createElement('button');
+            viewBtn.type = 'button';
+            viewBtn.className = 'btn-open';
+            viewBtn.title = 'View';
+            const viewIcon = document.createElement('img');
+            viewIcon.src = '../assets/icons/view1.png';
+            viewIcon.style.height = '20px';
+            viewIcon.style.width = '20px';
+            viewBtn.appendChild(viewIcon);
+            const viewOrig = '../assets/icons/view1.png';
+            const viewHover = '../assets/icons/view2.png';
+            viewBtn.addEventListener('mouseenter', () => { viewIcon.src = viewHover; });
+            viewBtn.addEventListener('mouseleave', () => { viewIcon.src = viewOrig; });
+
+            const projectToken = (project.number && String(project.number).trim()) || project.id;
+            viewBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const params = new URLSearchParams({ project: projectToken });
+                window.open(`project-viewer.html?${params.toString()}`, '_blank');
+            });
+
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'btn-edit';
+            editBtn.title = 'Edit';
+            const editIcon = document.createElement('img');
+            editIcon.src = '../assets/icons/edit1.png';
+            editIcon.style.height = '20px';
+            editIcon.style.width = '20px';
+            editBtn.appendChild(editIcon);
+            const editOrig = '../assets/icons/edit1.png';
+            const editHover = '../assets/icons/edit2.png';
+            editBtn.addEventListener('mouseenter', () => { editIcon.src = editHover; });
+            editBtn.addEventListener('mouseleave', () => { editIcon.src = editOrig; });
+
+            editBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openRenameProjectModal(project);
+            });
+
+            actionsCell.append(viewBtn, editBtn);
+            row.append(numberCell, nameCell, statusCell, actionsCell);
+
+            projectsListEl.appendChild(row);
+        }
+    }
+
+    function applyProjectsSearch() {
+        const q = (projectsSearchInput && projectsSearchInput.value.trim().toLowerCase()) || '';
+        projectsQuery = q;
+        if (!q) return renderProjects(projectsAll);
+        const filtered = projectsAll.filter((p) =>
+            (p.name || '').toLowerCase().includes(q) ||
+            (p.number || '').toLowerCase().includes(q) ||
+            normalizeProjectStatus(p.status).includes(q) ||
+            workflowLabel(normalizeWorkflowState(p.workflow_state)).toLowerCase().includes(q) ||
+            normalizeWorkflowState(p.workflow_state).toLowerCase().includes(q)
+        );
+        renderProjects(filtered);
+    }
+
+    async function loadProjects({ force = false } = {}) {
+        if (!projectsListEl) return;
+        if (projectsLoadedOnce && !force) return;
+        try {
+            projectsAll = await fetchAllProjects();
+            projectsLoadedOnce = true;
+            applyProjectsSearch();
+        } catch (e) {
+            projectsAll = [];
+            projectsLoadedOnce = false;
+            renderProjects([]);
+            if (projectsEmptyStateEl) {
+                projectsEmptyStateEl.style.display = 'block';
+                projectsEmptyStateEl.textContent = e.message || 'Failed to load projects.';
+            }
+        }
+    }
+
     // ---- Audit Logs UI wiring ----
     const auditTbody = document.getElementById('audit-logs-tbody');
     const auditSearchInput = document.getElementById('audit-search-input');
     const auditSearchBtn = document.getElementById('audit-search-btn');
+    const auditPrevBtn = document.getElementById('audit-prev-btn');
+    const auditNextBtn = document.getElementById('audit-next-btn');
+    const auditPageInfo = document.getElementById('audit-page-info');
 
-    const AUDIT_PAGE_SIZE = 50;
+    const AUDIT_PAGE_SIZE = 12;
     let auditLoadedOnce = false;
     let auditQuery = '';
     let auditOffset = 0;
+    let auditTotal = 0;
 
     const pad2 = (n) => String(n).padStart(2, '0');
 
@@ -70,6 +353,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        const formatAction = (value) => {
+            const raw = String(value || '');
+            const parts = raw.split(':');
+            if (parts.length >= 3 && parts[0] === 'archive') {
+                const kind = parts[1];
+                const act = parts.slice(2).join(':');
+                const kindLabel = kind === 'pano' ? 'Panorama' : kind === 'floorplan' ? 'Layout' : kind;
+                const actLabel =
+                    act === 'upload' ? 'Uploaded' :
+                    act === 'update' ? 'Updated' :
+                    act === 'rename' ? 'Renamed' :
+                    act;
+                return `${kindLabel} ${actLabel}`;
+            }
+            return raw;
+        };
+
         for (const r of rows) {
             const tr = document.createElement('tr');
 
@@ -86,7 +386,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             tdBy.textContent = r.created_by || '';
 
             const tdAction = document.createElement('td');
-            tdAction.textContent = r.action || '';
+            tdAction.textContent = formatAction(r.action);
 
             const tdMsg = document.createElement('td');
             tdMsg.textContent = r.message || '';
@@ -94,6 +394,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             tr.append(tdTs, tdProjNo, tdProjName, tdBy, tdAction, tdMsg);
             auditTbody.appendChild(tr);
         }
+    }
+
+    function setAuditPaginationState() {
+        if (auditPageInfo) {
+            if (!auditTotal) {
+                auditPageInfo.textContent = '0 results';
+            } else {
+                const page = Math.floor(auditOffset / AUDIT_PAGE_SIZE) + 1;
+                const pages = Math.max(1, Math.ceil(auditTotal / AUDIT_PAGE_SIZE));
+                auditPageInfo.textContent = `Page ${page} of ${pages} • ${auditTotal} total`;
+            }
+        }
+        if (auditPrevBtn) auditPrevBtn.disabled = auditOffset <= 0;
+        if (auditNextBtn) auditNextBtn.disabled = !auditTotal || auditOffset + AUDIT_PAGE_SIZE >= auditTotal;
     }
 
     async function fetchAuditLogs({ q, limit, offset }) {
@@ -134,10 +448,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         setAuditMessage('Loading audit logs...');
         try {
             const data = await fetchAuditLogs({ q: auditQuery, limit: AUDIT_PAGE_SIZE, offset: auditOffset });
-            renderAuditRows(Array.isArray(data.rows) ? data.rows : []);
+            auditTotal = Number.isFinite(Number(data.total)) ? Number(data.total) : 0;
+
+            // If the total shrank and the current offset is now out of range, rewind to the last page.
+            if (auditTotal > 0 && auditOffset >= auditTotal) {
+                auditOffset = Math.max(0, Math.floor((auditTotal - 1) / AUDIT_PAGE_SIZE) * AUDIT_PAGE_SIZE);
+                const retry = await fetchAuditLogs({ q: auditQuery, limit: AUDIT_PAGE_SIZE, offset: auditOffset });
+                auditTotal = Number.isFinite(Number(retry.total)) ? Number(retry.total) : auditTotal;
+                renderAuditRows(Array.isArray(retry.rows) ? retry.rows : []);
+            } else {
+                renderAuditRows(Array.isArray(data.rows) ? data.rows : []);
+            }
+            setAuditPaginationState();
             auditLoadedOnce = true;
         } catch (e) {
             try { console.error('Audit logs load failed:', e); } catch (err) {}
+            auditTotal = 0;
+            setAuditPaginationState();
             setAuditMessage(e.message || 'Failed to load audit logs.');
         }
     }
@@ -198,6 +525,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             tdBy.textContent = r.requested_by || '';
 
             const tdAction = document.createElement('td');
+            const reviewBtn = document.createElement('button');
+            reviewBtn.type = 'button';
+            reviewBtn.className = 'approval-action approval-review';
+            reviewBtn.textContent = 'Review';
+            reviewBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const pid = r.project_id ? String(r.project_id) : '';
+                if (!pid) return;
+                const params = new URLSearchParams({ project: pid, view: 'staging', return: 'superadmindb' });
+                window.open(`project-editor.html?${params.toString()}`, '_blank');
+            });
+
             const approveBtn = document.createElement('button');
             approveBtn.type = 'button';
             approveBtn.className = 'approval-action approval-approve';
@@ -243,7 +582,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
 
-            tdAction.append(approveBtn, rejectBtn);
+            tdAction.append(reviewBtn, approveBtn, rejectBtn);
             tr.append(tdTs, tdProjNo, tdProjName, tdInfo, tdBy, tdAction);
             approvalTbody.appendChild(tr);
         }
@@ -397,7 +736,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         manageNewPasswordInput.value = '';
         manageUserModal.classList.add('visible');
         manageUserModal.setAttribute('aria-hidden', 'false');
-        manageRoleSelect.focus();
+        manageUsernameInput.focus();
     }
 
     function closeManageUserModal() {
@@ -478,11 +817,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         return data;
     }
 
-    async function updateUser(id, { role, is_active }) {
+    async function updateUser(id, { username, role, is_active }) {
         const res = await fetch(`/api/users/${encodeURIComponent(id)}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ role, is_active }),
+            body: JSON.stringify({ username, role, is_active }),
         });
         const raw = await res.text().catch(() => '');
         let data = null;
@@ -539,8 +878,78 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (targetKey === 'approval-requests') {
                 loadApprovalRequests();
             }
+            if (targetKey === 'projects') {
+                loadProjects();
+            }
         });
     });
+
+    if (projectsSearchBtn) {
+        projectsSearchBtn.addEventListener('click', () => {
+            projectsLoadedOnce = true;
+            applyProjectsSearch();
+        });
+    }
+    if (projectsSearchInput) {
+        projectsSearchInput.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            if (projectsSearchBtn) projectsSearchBtn.click();
+        });
+    }
+
+    if (renameProjectCancelBtn) {
+        renameProjectCancelBtn.addEventListener('click', () => closeRenameProjectModal());
+    }
+    if (renameProjectModal) {
+        renameProjectModal.addEventListener('click', (e) => {
+            if (e.target === renameProjectModal) closeRenameProjectModal();
+        });
+    }
+    if (renameProjectNumberInput) {
+        renameProjectNumberInput.addEventListener('input', (e) => {
+            const value = sanitizeProjectNumber(e.target.value || '');
+            if (e.target.value !== value) e.target.value = value;
+        });
+    }
+    if (renameProjectForm) {
+        renameProjectForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!renameProjectIdInput || !renameProjectNameInput || !renameProjectNumberInput) return;
+            if (renameProjectErrorEl) renameProjectErrorEl.textContent = '';
+
+            const id = renameProjectIdInput.value;
+            const number = sanitizeProjectNumber(renameProjectNumberInput.value || '');
+            const name = String(renameProjectNameInput.value || '').trim();
+            if (!number) {
+                if (renameProjectErrorEl) renameProjectErrorEl.textContent = 'Project number is required.';
+                return;
+            }
+            const nameError = validateProjectName(name);
+            if (nameError) {
+                if (renameProjectErrorEl) renameProjectErrorEl.textContent = nameError;
+                return;
+            }
+
+            const current = projectsAll.find((p) => p && p.id === id) || null;
+            const status = current ? current.status : 'on-going';
+
+            if (renameProjectSaveBtn) renameProjectSaveBtn.disabled = true;
+            try {
+                const updated = await renameProject({ id, name, number, status });
+                projectsAll = projectsAll.map((p) => (p.id === id ? { ...p, ...updated } : p));
+                closeRenameProjectModal();
+                applyProjectsSearch();
+            } catch (err) {
+                if (renameProjectErrorEl) renameProjectErrorEl.textContent = err.message || 'Failed to update project.';
+            } finally {
+                if (renameProjectSaveBtn) renameProjectSaveBtn.disabled = false;
+            }
+        });
+    }
+
+    // Initial load for the default active tab.
+    loadProjects();
 
     if (auditSearchBtn) {
         auditSearchBtn.addEventListener('click', () => {
@@ -555,6 +964,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (e.key !== 'Enter') return;
             e.preventDefault();
             if (auditSearchBtn) auditSearchBtn.click();
+        });
+    }
+
+    if (auditPrevBtn) {
+        auditPrevBtn.addEventListener('click', () => {
+            if (auditOffset <= 0) return;
+            auditOffset = Math.max(0, auditOffset - AUDIT_PAGE_SIZE);
+            auditLoadedOnce = false;
+            loadAuditLogs({ force: true });
+        });
+    }
+
+    if (auditNextBtn) {
+        auditNextBtn.addEventListener('click', () => {
+            if (!auditTotal || auditOffset + AUDIT_PAGE_SIZE >= auditTotal) return;
+            auditOffset = auditOffset + AUDIT_PAGE_SIZE;
+            auditLoadedOnce = false;
+            loadAuditLogs({ force: true });
         });
     }
 
@@ -651,6 +1078,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const manageNewPasswordInput = document.getElementById('manage-new-password');
     const manageUserErrorEl = document.getElementById('manage-user-error');
 
+    if (manageUsernameInput) {
+        manageUsernameInput.addEventListener('input', (e) => {
+            const raw = String(e.target.value || '');
+            const cleaned = raw.replace(/[^A-Za-z0-9_.-]+/g, '').slice(0, 50);
+            if (raw !== cleaned) e.target.value = cleaned;
+        });
+    }
+
     if (manageUserCancelBtn) manageUserCancelBtn.addEventListener('click', () => closeManageUserModal());
     if (manageUserModal) {
         manageUserModal.addEventListener('click', (e) => {
@@ -665,11 +1100,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (manageUserErrorEl) manageUserErrorEl.textContent = '';
 
             const id = manageUserIdInput.value;
+            const username = manageUsernameInput ? String(manageUsernameInput.value || '').trim() : '';
             const role = manageRoleSelect ? manageRoleSelect.value : 'admin';
             const status = manageStatusSelect ? manageStatusSelect.value : 'active';
             const is_active = status !== 'suspended';
             const newPassword = manageNewPasswordInput ? String(manageNewPasswordInput.value || '') : '';
 
+            if (!username) {
+                if (manageUserErrorEl) manageUserErrorEl.textContent = 'Username is required.';
+                return;
+            }
+            if (!/^[A-Za-z0-9_.-]+$/.test(username) || username.length > 50) {
+                if (manageUserErrorEl) manageUserErrorEl.textContent = 'Username can only contain letters, numbers, underscore, dot, and dash (max 50).';
+                return;
+            }
             if (newPassword && newPassword.length < 8) {
                 if (manageUserErrorEl) manageUserErrorEl.textContent = 'New password must be at least 8 characters.';
                 return;
@@ -677,7 +1121,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (manageUserSaveBtn) manageUserSaveBtn.disabled = true;
             try {
-                await updateUser(id, { role, is_active });
+                await updateUser(id, { username, role, is_active });
                 if (newPassword) {
                     await resetUserPassword(id, newPassword);
                 }

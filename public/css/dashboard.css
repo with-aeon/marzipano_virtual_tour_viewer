@@ -4,7 +4,8 @@
   justify-content: center;
   min-height: 100vh;
   background: url('../assets/images/QC-Hall2.jpg');
-  /* background-size: cover; */
+  background-size: cover;
+  background-repeat: no-repeat;
   background-position: center;
   position: relative;
   z-index: 0;
@@ -13,26 +14,174 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: rgba(7, 0, 0, 0.4); /* adjust dim level */
+  background: rgba(7, 0, 0, 0.4);
   z-index: -1;
 }
 
 /* Logout button styles */
-#dashboard-title .logout-btn {
+#dashboard-title .dashboard-user-card {
   position: absolute;
   right: 1rem;
   top: 50%;
   transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #ffffff;
+  color: #000000;
+  padding: 8px 10px;
+  border-radius: 4px;
+  z-index: 5;
+}
+
+#dashboard-title .dashboard-user-role {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.5px;
+}
+
+#dashboard-title .dashboard-user-card .logout-btn {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Notifications */
+#dashboard-title .dashboard-notifications {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+#dashboard-title .dashboard-notifications-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #f5f5f5;
+  color: #0d3d52;
+  border: 1px solid #bfc6cc;
+  border-radius: 4px;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  font-size: 11px;
+  line-height: 1;
+}
+
+#dashboard-title .notifications-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #c62828;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+#dashboard-title .notifications-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: -4.2rem;
+  width: 360px;
+  max-width: 70vw;
+  background: #ffffff;
+  border: 1px solid #bfc6cc;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+#dashboard-title .notifications-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: #0d3d52;
+  color: #ffffff;
+}
+
+#dashboard-title .notifications-panel-title {
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+#dashboard-title .notifications-mark-all {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  color: #ffffff;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+#dashboard-title .notifications-list {
+  max-height: 320px;
+  overflow: auto;
+}
+
+#dashboard-title .notification-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-top: 1px solid #e1e4e8;
+  cursor: pointer;
+}
+
+#dashboard-title .notification-item.notification-unread {
+  background: #0d3d52;
+}
+#dashboard-title .notification-item.notification-unread .notification-title,
+#dashboard-title .notification-item.notification-unread .notification-message,
+#dashboard-title .notification-item.notification-unread .notification-meta {
+  color: #ffffff;
+}
+
+#dashboard-title .notification-item:hover {
+  background: #f5f5f5;
+}
+
+#dashboard-title .notification-item.notification-unread:hover {
+  background: #0b4f6c;
+}
+
+#dashboard-title .notification-title {
+  font-weight: 800;
+  font-size: 12px;
+  color: #0d3d52;
+  text-transform: uppercase;
+}
+
+#dashboard-title .notification-message {
+  font-size: 13px;
+  color: #111111;
+}
+
+#dashboard-title .notification-meta {
+  font-size: 12px;
+  color: #555555;
+}
+
+#dashboard-title .notifications-empty {
+  padding: 12px;
+  font-size: 13px;
+  color: #111111;
 }
 .logout-btn {
   padding: 8px 10px;
   background: #c62828;
-  color: #fff;
   border: none;
   border-radius: 4px;
-  font-weight: 600;
   cursor: pointer;
-  gap: 0.5rem;
   transition: background 0.5s;
 }
 .logout-btn:hover {

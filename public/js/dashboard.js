@@ -31,6 +31,15 @@ const renameProjectErrorEl = document.getElementById('rename-project-error');
 const renameModalCancelBtn = document.getElementById('rename-modal-cancel');
 const renameModalSaveBtn = document.getElementById('rename-modal-save');
 
+// ---- Admin notifications (approval decisions) ----
+const notificationsBtn = document.getElementById('notifications-btn');
+const notificationsBadgeEl = document.getElementById('notifications-badge');
+const notificationsPanelEl = document.getElementById('notifications-panel');
+const notificationsListEl = document.getElementById('notifications-list');
+const notificationsEmptyEl = document.getElementById('notifications-empty');
+const notificationsMarkAllBtn = document.getElementById('notifications-mark-all');
+const dashboardUsernameEl = document.getElementById('dashboard-username');
+
 // Socket.IO client (served by the backend at `/socket.io/...`)
 import { io } from '/socket.io/socket.io.esm.min.js';
 
@@ -43,6 +52,7 @@ function normalizeWorkflowState(value) {
   const v = String(value || '').trim().toUpperCase();
   if (v === 'PENDING_APPROVAL') return 'PENDING_APPROVAL';
   if (v === 'REJECTED') return 'REJECTED';
+  if (v === 'MODIFIED') return 'MODIFIED';
   if (v === 'DRAFT') return 'DRAFT';
   return 'PUBLISHED';
 }
@@ -50,6 +60,295 @@ function normalizeWorkflowState(value) {
 function isPublishedProject(project) {
   return normalizeWorkflowState(project && project.workflow_state) === 'PUBLISHED';
 }
+
+function isStagingProject(project) {
+  return !isPublishedProject(project);
+}
+
+function getDashboardView() {
+  const params = new URLSearchParams(window.location.search);
+  const view = String(params.get('view') || '').trim().toLowerCase();
+  return view === 'staging' ? 'staging' : 'published';
+}
+
+const DASHBOARD_VIEW = getDashboardView();
+const IS_STAGING_VIEW = DASHBOARD_VIEW === 'staging';
+
+function workflowLabel(state) {
+  if (state === 'PENDING_APPROVAL') return 'Pending';
+  if (state === 'REJECTED') return 'Rejected';
+  if (state === 'MODIFIED') return 'Modified';
+  if (state === 'DRAFT') return 'Draft';
+  return 'Published';
+}
+
+const dashboardTitleEl = document.querySelector('#dashboard-title h1');
+const dashboardTitleBaseText = dashboardTitleEl ? dashboardTitleEl.textContent : '';
+const openProjectHeaderEl = document.querySelector('.open-project-header-element');
+const toggleDashboardViewBtn = document.getElementById('btn-toggle-dashboard-view');
+const dashboardViewLabelEl = document.getElementById('dashboard-view-label');
+
+function syncDashboardViewUi() {
+  if (IS_STAGING_VIEW) {
+    const base = dashboardTitleBaseText
+      ? dashboardTitleBaseText.replace(/\s*\(Infrastructure Projects Virtual Tour\)\s*/i, ' ').replace(/\s+/g, ' ').trim()
+      : '';
+    if (dashboardTitleEl && base) dashboardTitleEl.textContent = `${base} (Staging)`;
+    document.title = 'QCDE - IPVT (Staging)';
+    if (openProjectHeaderEl) openProjectHeaderEl.textContent = 'OPEN DRAFT PROJECT';
+    if (emptyStateEl) emptyStateEl.textContent = 'No draft projects yet. Create one to get started.';
+  } else {
+    if (dashboardTitleEl && dashboardTitleBaseText) dashboardTitleEl.textContent = dashboardTitleBaseText;
+    document.title = 'QCDE - IPVT';
+    if (openProjectHeaderEl) openProjectHeaderEl.textContent = 'OPEN PROJECT';
+    if (emptyStateEl) emptyStateEl.textContent = 'No projects yet. Create one to get started.';
+  }
+
+  if (toggleDashboardViewBtn) {
+    toggleDashboardViewBtn.href = IS_STAGING_VIEW ? 'dashboard.html' : 'dashboard.html?view=staging';
+  }
+  if (dashboardViewLabelEl) {
+    dashboardViewLabelEl.textContent = IS_STAGING_VIEW ? 'PUBLISHED DASHBOARD' : 'STAGING DASHBOARD';
+  }
+}
+
+syncDashboardViewUi();
+
+let notificationsUserKey = 'unknown';
+
+// Set the header username (Admin side)
+(async () => {
+  if (!dashboardUsernameEl) return;
+  try {
+    const res = await fetch('/api/me', { headers: { 'Accept': 'application/json' } });
+    const me = await res.json().catch(() => null);
+    if (me && me.loggedIn && me.username) {
+      dashboardUsernameEl.textContent = String(me.username).toUpperCase();
+    }
+    if (me && me.loggedIn) {
+      if (me.id !== undefined && me.id !== null && String(me.id).trim()) {
+        notificationsUserKey = `id:${String(me.id).trim()}`;
+      } else if (me.username) {
+        notificationsUserKey = `u:${String(me.username).trim().toLowerCase()}`;
+      }
+    }
+  } catch (e) {}
+})();
+
+// ---- Notifications behavior ----
+const NOTIFICATIONS_POLL_MS = 20000;
+let notificationsPollTimer = null;
+const NOTIFICATIONS_LAST_SEEN_KEY_PREFIX = 'admin_notifications_last_seen_at';
+
+const pad2 = (n) => String(n).padStart(2, '0');
+function formatDateTime(value) {
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return '';
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function setNotificationsBadge(count) {
+  if (!notificationsBadgeEl) return;
+  const n = Number(count) || 0;
+  notificationsBadgeEl.textContent = String(n);
+  notificationsBadgeEl.hidden = n <= 0;
+}
+
+function notificationsLastSeenStorageKey() {
+  return `${NOTIFICATIONS_LAST_SEEN_KEY_PREFIX}:${notificationsUserKey}`;
+}
+
+function getNotificationsLastSeenMs() {
+  try {
+    const raw = localStorage.getItem(notificationsLastSeenStorageKey());
+    const t = raw ? new Date(raw).getTime() : 0;
+    return Number.isFinite(t) ? t : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+function setNotificationsLastSeenNow() {
+  try {
+    localStorage.setItem(notificationsLastSeenStorageKey(), new Date().toISOString());
+  } catch (e) {}
+}
+
+function computeClientUnseenCount(rows) {
+  const lastSeen = getNotificationsLastSeenMs();
+  const list = Array.isArray(rows) ? rows : [];
+  let count = 0;
+  for (const r of list) {
+    const t = new Date(r && (r.event_at || r.decided_at || r.created_at)).getTime();
+    if (Number.isFinite(t) && t > lastSeen) count += 1;
+  }
+  return count;
+}
+
+function setNotificationsPanelOpen(open) {
+  if (!notificationsPanelEl || !notificationsBtn) return;
+  notificationsPanelEl.hidden = !open;
+  notificationsBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function renderNotifications(rows, supportsSeen) {
+  if (!notificationsListEl || !notificationsEmptyEl) return;
+  notificationsListEl.innerHTML = '';
+
+  const list = Array.isArray(rows) ? rows : [];
+  notificationsEmptyEl.style.display = list.length ? 'none' : 'block';
+
+  const lastSeenMs = supportsSeen ? 0 : getNotificationsLastSeenMs();
+
+  for (const r of list) {
+    const id = r && r.id;
+    const status = String((r && r.status) || '').toUpperCase();
+    const projectNumber = (r && r.project_number) || '';
+    const projectName = (r && r.project_name) || '';
+    const decidedBy = (r && r.decided_by) || '';
+    const when = formatDateTime(r && (r.event_at || r.decided_at || r.created_at));
+    const comment = (r && r.admin_comment) ? String(r.admin_comment) : '';
+
+    const item = document.createElement('div');
+    item.className = 'notification-item';
+    item.dataset.id = String(id || '');
+
+    const isUnread = supportsSeen
+      ? !(r && r.requester_seen_at)
+      : (() => {
+          const t = new Date(r && (r.event_at || r.decided_at || r.created_at)).getTime();
+          return Number.isFinite(t) && t > lastSeenMs;
+        })();
+    if (isUnread) item.classList.add('notification-unread');
+
+    const title = document.createElement('div');
+    title.className = 'notification-title';
+    title.textContent = status === 'APPROVED' ? 'Approved' : status === 'REJECTED' ? 'Rejected' : 'Update';
+
+    const msg = document.createElement('div');
+    msg.className = 'notification-message';
+    if (status === 'APPROVED') {
+      msg.textContent = `${projectNumber} ${projectName ? `- ${projectName}` : ''} was approved.`;
+    } else if (status === 'REJECTED') {
+      msg.textContent = `${projectNumber} ${projectName ? `- ${projectName}` : ''} was rejected.`;
+    } else {
+      msg.textContent = `${projectNumber} ${projectName ? `- ${projectName}` : ''} was updated.`;
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'notification-meta';
+    const bits = [];
+    if (decidedBy) bits.push(`By ${decidedBy}`);
+    if (when) bits.push(when);
+    if (comment) bits.push(`Comment: ${comment}`);
+    meta.textContent = bits.join(' • ');
+
+    item.append(title, msg, meta);
+    item.addEventListener('click', async () => {
+      if (!id) return;
+      try {
+        await fetch(`/api/notifications/${encodeURIComponent(String(id))}/read`, { method: 'POST' });
+      } catch (e) {}
+      setNotificationsLastSeenNow();
+      await refreshNotifications();
+    });
+
+    notificationsListEl.appendChild(item);
+  }
+}
+
+async function fetchNotifications() {
+  // Always include seen rows so "mark as read" does not remove items from the list.
+  const res = await fetch('/api/notifications?limit=20&includeSeen=1', { headers: { 'Accept': 'application/json' } });
+  const raw = await res.text().catch(() => '');
+  let data = null;
+  try { data = raw ? JSON.parse(raw) : null; } catch (e) { data = null; }
+  if (!res.ok) {
+    // Let login.js handle redirects on auth failures; keep this quiet.
+    throw new Error((data && (data.error || data.message)) || `HTTP ${res.status}`);
+  }
+  return data || { unseen: 0, rows: [] };
+}
+
+async function refreshNotifications() {
+  if (!notificationsBtn || !notificationsPanelEl) return;
+  try {
+    const data = await fetchNotifications();
+    const supportsSeen = data && data.supports_seen === true;
+    if (supportsSeen) {
+      setNotificationsBadge(data.unseen);
+    } else {
+      setNotificationsBadge(computeClientUnseenCount(data && data.rows));
+    }
+    renderNotifications(data.rows, supportsSeen);
+  } catch (e) {
+    try { console.warn('Notifications load failed:', e); } catch (err) {}
+    setNotificationsBadge(0);
+    if (notificationsListEl) notificationsListEl.innerHTML = '';
+    if (notificationsEmptyEl) {
+      notificationsEmptyEl.style.display = 'block';
+      notificationsEmptyEl.textContent = 'Failed to load notifications.';
+    }
+  }
+}
+
+function startNotificationsPolling() {
+  if (!notificationsBtn) return;
+  if (notificationsPollTimer) return;
+  notificationsPollTimer = setInterval(() => {
+    refreshNotifications();
+  }, NOTIFICATIONS_POLL_MS);
+}
+
+function stopNotificationsPolling() {
+  if (!notificationsPollTimer) return;
+  clearInterval(notificationsPollTimer);
+  notificationsPollTimer = null;
+}
+
+if (notificationsBtn && notificationsPanelEl) {
+  notificationsBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const open = notificationsPanelEl.hidden;
+    setNotificationsPanelOpen(open);
+    if (open) {
+      await refreshNotifications();
+
+      // Mark as "seen" client-side so the badge clears even when DB seen-tracking
+      // isn't available yet (e.g., older schema).
+      setNotificationsLastSeenNow();
+      await refreshNotifications();
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (notificationsPanelEl.hidden) return;
+    const withinCard = e.target && typeof e.target.closest === 'function'
+      ? e.target.closest('.dashboard-user-card')
+      : null;
+    if (!withinCard) setNotificationsPanelOpen(false);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!notificationsPanelEl.hidden) setNotificationsPanelOpen(false);
+  });
+}
+
+if (notificationsMarkAllBtn) {
+  notificationsMarkAllBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    try {
+      await fetch('/api/notifications/read-all', { method: 'POST' });
+    } catch (err) {}
+    setNotificationsLastSeenNow();
+    await refreshNotifications();
+  });
+}
+
+// Initial badge update + polling.
+refreshNotifications();
+startNotificationsPolling();
 
 // ---- In-memory state used for filtering and rendering ----
 let allProjects = [];
@@ -259,6 +558,12 @@ async function updateProjectStatus(project, nextStatus) {
  * @returns {void}
  */
 function openProject(project) {
+  if (IS_STAGING_VIEW) {
+    const params = new URLSearchParams({ project: project.id });
+    window.location.href = `staging-editor.html?${params}`;
+    return;
+  }
+
   // Prefer project number in shared URLs when available.
   const projectToken = (project.number && String(project.number).trim()) || project.id;
   const params = new URLSearchParams({ project: projectToken });
@@ -417,50 +722,59 @@ function renderProjectRow(project) {
   nameCell.className = 'project-name-cell';
   nameCell.appendChild(nameDisplay);
 
-  // cell for status
-  const statusDisplay = document.createElement('select');
-  statusDisplay.className = 'project-status-display project-status-select';
-  const statusOptions = [
-    { value: 'on-going', label: 'On-going' },
-    { value: 'completed', label: 'Completed' },
-  ];
-  statusOptions.forEach(({ value, label }) => {
-    const option = document.createElement('option');
-    option.value = value;
-    option.textContent = label;
-    option.className = value === 'completed' ? 'status-option-completed' : 'status-option-ongoing';
-    statusDisplay.appendChild(option);
-  });
-  statusDisplay.value = normalizeProjectStatus(project.status);
-  statusDisplay.classList.toggle('status-completed', statusDisplay.value === 'completed');
-  statusDisplay.classList.toggle('status-ongoing', statusDisplay.value === 'on-going');
+  // cell for status / workflow state
   const statusCell = document.createElement('div');
   statusCell.className = 'project-status-cell';
-  statusCell.appendChild(statusDisplay);
 
-  // Prevent row click (open project) when interacting with status control
-  statusCell.addEventListener('click', (e) => {
-    e.stopPropagation();
-  });
+  if (IS_STAGING_VIEW) {
+    const state = normalizeWorkflowState(project.workflow_state);
+    const statusDisplay = document.createElement('div');
+    statusDisplay.className = 'project-status-display';
+    statusDisplay.textContent = workflowLabel(state);
+    statusCell.appendChild(statusDisplay);
+  } else {
+    const statusDisplay = document.createElement('select');
+    statusDisplay.className = 'project-status-display project-status-select';
+    const statusOptions = [
+      { value: 'on-going', label: 'On-going' },
+      { value: 'completed', label: 'Completed' },
+    ];
+    statusOptions.forEach(({ value, label }) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      option.className = value === 'completed' ? 'status-option-completed' : 'status-option-ongoing';
+      statusDisplay.appendChild(option);
+    });
+    statusDisplay.value = normalizeProjectStatus(project.status);
+    statusDisplay.classList.toggle('status-completed', statusDisplay.value === 'completed');
+    statusDisplay.classList.toggle('status-ongoing', statusDisplay.value === 'on-going');
+    statusCell.appendChild(statusDisplay);
 
-  statusDisplay.addEventListener('change', async () => {
-    const previous = normalizeProjectStatus(project.status);
-    const next = normalizeProjectStatus(statusDisplay.value);
-    if (next === previous) return;
-    statusDisplay.disabled = true;
-    statusDisplay.classList.toggle('status-completed', next === 'completed');
-    statusDisplay.classList.toggle('status-ongoing', next === 'on-going');
-    try {
-      const updatedProject = await updateProjectStatus(project, next);
-      allProjects = allProjects.map((p) => (p.id === project.id ? updatedProject : p));
-      renderProjectList(allProjects);
-    } catch (e) {
-      statusDisplay.value = previous;
-      alert(e.message || 'Failed to update status.');
-    } finally {
-      statusDisplay.disabled = false;
-    }
-  });
+    // Prevent row click (open project) when interacting with status control
+    statusCell.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+
+    statusDisplay.addEventListener('change', async () => {
+      const previous = normalizeProjectStatus(project.status);
+      const next = normalizeProjectStatus(statusDisplay.value);
+      if (next === previous) return;
+      statusDisplay.disabled = true;
+      statusDisplay.classList.toggle('status-completed', next === 'completed');
+      statusDisplay.classList.toggle('status-ongoing', next === 'on-going');
+      try {
+        const updatedProject = await updateProjectStatus(project, next);
+        allProjects = allProjects.map((p) => (p.id === project.id ? updatedProject : p));
+        renderProjectList(allProjects);
+      } catch (e) {
+        statusDisplay.value = previous;
+        alert(e.message || 'Failed to update status.');
+      } finally {
+        statusDisplay.disabled = false;
+      }
+    });
+  }
 
   const viewBtn = document.createElement('button');
   viewBtn.type = 'button';
@@ -489,7 +803,6 @@ function renderProjectRow(project) {
   editBTN.type = 'button';
   editBTN.className = 'btn-edit';
   editBTN.title = "Edit"
-  // editBTN.textContent = 'Rename';
   const renameIcon = document.createElement('img');
   renameIcon.src = "../assets/icons/edit1.png"
   renameIcon.style.height = "20px";
@@ -520,8 +833,7 @@ function renderProjectRow(project) {
   // but ignore clicks that originate from the action buttons.
   row.onclick = (e) => {
     if (e.target.closest('button')) return;
-    const params = new URLSearchParams({ project: projectToken });
-    window.location.href = `project-editor.html?${params}`;
+    openProject(project);
   };
 
   editBTN.onclick = () => showRenameModal(project, nameDisplay);
@@ -570,7 +882,9 @@ function renderOpenProjectList(projects) {
   if (!openProjectListEl) return;
   openProjectListEl.innerHTML = '';
   if (!projects || projects.length === 0) {
-    openProjectListEl.innerHTML = '<p class="empty-state">No projects yet.</p>';
+    openProjectListEl.innerHTML = IS_STAGING_VIEW
+      ? '<p class="empty-state">No draft projects yet.</p>'
+      : '<p class="empty-state">No projects yet.</p>';
     return;
   }
   for (const p of projects) {
@@ -649,10 +963,13 @@ function applyProjectSearch(options = {}) {
     projectsToRender = allProjects;
   } else {
     const q = query.toLowerCase();
-    projectsToRender = allProjects.filter((p) => 
-      (p.name || '').toLowerCase().includes(q) || 
+    projectsToRender = allProjects.filter((p) =>
+      (p.name || '').toLowerCase().includes(q) ||
       (p.number || '').toLowerCase().includes(q) ||
-      normalizeProjectStatus(p.status).includes(q)
+      (IS_STAGING_VIEW
+        ? workflowLabel(normalizeWorkflowState(p.workflow_state)).toLowerCase().includes(q) ||
+          normalizeWorkflowState(p.workflow_state).toLowerCase().includes(q)
+        : normalizeProjectStatus(p.status).includes(q))
     );
   }
 
@@ -678,7 +995,10 @@ function applyOpenProjectSearch() {
     projectsToRender = openProjectProjects.filter((p) =>
       (p.name || '').toLowerCase().includes(q) ||
       (p.number || '').toLowerCase().includes(q) ||
-      normalizeProjectStatus(p.status).includes(q)
+      (IS_STAGING_VIEW
+        ? workflowLabel(normalizeWorkflowState(p.workflow_state)).toLowerCase().includes(q) ||
+          normalizeWorkflowState(p.workflow_state).toLowerCase().includes(q)
+        : normalizeProjectStatus(p.status).includes(q))
     );
   }
   renderOpenProjectList(projectsToRender);
@@ -693,7 +1013,8 @@ function applyOpenProjectSearch() {
 async function loadProjects() {
   try {
     const fetched = await fetchProjects();
-    allProjects = mergeProjectStatuses(allProjects, fetched).filter(isPublishedProject);
+    const merged = mergeProjectStatuses(allProjects, fetched);
+    allProjects = merged.filter(IS_STAGING_VIEW ? isStagingProject : isPublishedProject);
     renderProjectList(allProjects);
   } catch (e) {
     emptyStateEl.textContent = 'Error loading projects: ' + e.message;
@@ -746,7 +1067,8 @@ modalCreateBtn.onclick = async () => {
 document.getElementById('btn-open-project').onclick = async () => {
   try {
     const projects = await fetchProjects();
-    openProjectProjects = mergeProjectStatuses(allProjects, projects).filter(isPublishedProject);
+    const merged = mergeProjectStatuses(allProjects, projects);
+    openProjectProjects = merged.filter(IS_STAGING_VIEW ? isStagingProject : isPublishedProject);
     if (openProjectSearchInput) {
       openProjectSearchInput.value = '';
     }
@@ -799,10 +1121,10 @@ try {
   const socket = io();
   socket.on('projects:changed', (projects) => {
     if (!Array.isArray(projects)) return;
-    allProjects = mergeProjectStatuses(allProjects, projects).filter(isPublishedProject);
+    allProjects = mergeProjectStatuses(allProjects, projects).filter(IS_STAGING_VIEW ? isStagingProject : isPublishedProject);
     applyProjectSearch();
     if (openProjectModal && openProjectModal.classList.contains('visible')) {
-      openProjectProjects = mergeProjectStatuses(openProjectProjects, projects).filter(isPublishedProject);
+      openProjectProjects = mergeProjectStatuses(openProjectProjects, projects).filter(IS_STAGING_VIEW ? isStagingProject : isPublishedProject);
       applyOpenProjectSearch();
     }
   });

@@ -76,6 +76,10 @@ CREATE TABLE IF NOT EXISTS layout_hotspots (
 CREATE TABLE IF NOT EXISTS audit_logs (
     id SERIAL PRIMARY KEY,
     project_id VARCHAR(255) REFERENCES projects(id) ON DELETE SET NULL,
+    -- Snapshot fields: preserve the project name/number as-of the time the action occurred.
+    -- This prevents older log entries from changing when a project is later renamed.
+    project_number VARCHAR(50),
+    project_name VARCHAR(255),
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     action VARCHAR(50) NOT NULL,
     message TEXT,
@@ -92,5 +96,8 @@ CREATE TABLE IF NOT EXISTS approval_requests (
     payload JSONB NOT NULL,
     status VARCHAR(20) DEFAULT 'PENDING',
     admin_comment TEXT,
+    decided_at TIMESTAMP,
+    decided_by INTEGER REFERENCES users(id),
+    requester_seen_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

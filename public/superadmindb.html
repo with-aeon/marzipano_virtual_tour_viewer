@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QCDE - IPVT Super Admin</title>
     <link rel="stylesheet" href="css/superadmindb.css">
+    <link rel="stylesheet" href="css/dialog.css">
 </head>
 <body>
 
@@ -31,7 +32,26 @@
 
     <div class="main-content">
         <section class="content-section active" data-section="projects">
-            <h1>Welcome, Admin</h1>
+            <div class="projects-header">
+                <h2>PROJECTS</h2>
+                <div class="projects-search">
+                    <input id="sa-project-search-input" type="text" placeholder="Search" aria-label="Search projects">
+                    <button id="sa-project-search-btn" type="button">Search</button>
+                </div>
+            </div>
+
+            <div class="sa-projects-dashboard">
+                <div class="project-table-scroll" id="sa-project-table-scroll">
+                    <section class="project-container-header" id="sa-project-container-header">
+                        <p>Project Number</p>
+                        <p>Project Name</p>
+                        <p>Status</p>
+                        <p id="sa-header-action">Action</p>
+                    </section>
+                    <section class="project-list" id="sa-project-list"></section>
+                </div>
+                <p class="sa-empty-state" id="sa-projects-empty-state">No projects found.</p>
+            </div>
         </section>
 
         <section class="content-section" data-section="approval-requests">
@@ -80,6 +100,12 @@
                 </thead>
                 <tbody id="audit-logs-tbody"></tbody>
             </table>
+
+            <div class="table-pagination" id="audit-pagination">
+                <button id="audit-prev-btn" type="button" class="table-pagination-btn">Prev</button>
+                <span id="audit-page-info" class="table-pagination-info"></span>
+                <button id="audit-next-btn" type="button" class="table-pagination-btn">Next</button>
+            </div>
         </section>
 
         <section class="content-section" data-section="user-management">
@@ -150,7 +176,7 @@
                 <input type="hidden" id="manage-user-id">
                 <div class="sa-form-group">
                     <label for="manage-username">Username</label>
-                    <input id="manage-username" type="text" disabled>
+                    <input id="manage-username" type="text" autocomplete="off" maxlength="50">
                 </div>
                 <div class="sa-form-group">
                     <label for="manage-role">Role</label>
@@ -179,6 +205,29 @@
                 <div class="sa-modal-actions">
                     <button type="button" class="sa-btn sa-btn-secondary" id="manage-user-cancel">Cancel</button>
                     <button type="submit" class="sa-btn sa-btn-primary" id="manage-user-save">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Rename Project modal (Super Admin only) -->
+    <div class="sa-modal-overlay" id="sa-rename-project-modal" aria-hidden="true">
+        <div class="sa-modal" role="dialog" aria-modal="true" aria-labelledby="sa-rename-project-title">
+            <h3 id="sa-rename-project-title">EDIT PROJECT</h3>
+            <form id="sa-rename-project-form">
+                <input type="hidden" id="sa-rename-project-id">
+                <div class="sa-form-group">
+                    <label for="sa-rename-project-number">Project Number</label>
+                    <input id="sa-rename-project-number" type="text" autocomplete="off" maxlength="20" required>
+                </div>
+                <div class="sa-form-group">
+                    <label for="sa-rename-project-name">Project Name</label>
+                    <input id="sa-rename-project-name" type="text" autocomplete="off" maxlength="150" required>
+                </div>
+                <p class="sa-modal-error" id="sa-rename-project-error" role="alert"></p>
+                <div class="sa-modal-actions">
+                    <button type="button" class="sa-btn sa-btn-secondary" id="sa-rename-project-cancel">Cancel</button>
+                    <button type="submit" class="sa-btn sa-btn-primary" id="sa-rename-project-save">Save</button>
                 </div>
             </form>
         </div>

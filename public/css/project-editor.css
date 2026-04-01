@@ -59,6 +59,7 @@
 }
 .workflow-badge-draft { background: #6B7280; }
 .workflow-badge-pending { background: #F59E0B; }
+.workflow-badge-modified { background: #2563EB; }
 .workflow-badge-rejected { background: #DC2626; }
 .workflow-badge-published { background: #16A34A; }
 

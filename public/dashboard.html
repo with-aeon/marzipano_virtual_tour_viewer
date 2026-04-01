@@ -12,22 +12,40 @@
         <section id="dashboard-title">
             <img src="assets/icons/NEW-LOGO-QCDE.png"> 
             <h1>QCDE - IPVT (Infrastructure Projects Virtual Tour)</h1>
-            <button id="logout-btn" class="logout-btn" data-logout-message="Are you sure you want to log out?">
-                <img src="assets/icons/log-out.png" class="icons">Logout
-            </button>
+            <div class="dashboard-user-card">
+                <span class="dashboard-user-role" id="dashboard-username">ADMIN</span>
+                <div class="dashboard-notifications">
+                    <button id="notifications-btn" type="button" class="dashboard-notifications-btn" aria-haspopup="true" aria-expanded="false">
+                        Notifications
+                        <span id="notifications-badge" class="notifications-badge" hidden>0</span>
+                    </button>
+                    <div id="notifications-panel" class="notifications-panel" hidden>
+                        <div class="notifications-panel-header">
+                            <span class="notifications-panel-title">Notifications</span>
+                            <button id="notifications-mark-all" type="button" class="notifications-mark-all">Mark all read</button>
+                        </div>
+                        <div id="notifications-list" class="notifications-list"></div>
+                        <div id="notifications-empty" class="notifications-empty">No notifications.</div>
+                    </div>
+                </div>
+                <button id="logout-btn" class="logout-btn" data-logout-message="Are you sure you want to log out?">
+                    <img src="assets/icons/log-out.png" class="icons">
+                </button>
+            </div>
         </section>
         <div id="project-container">
             <section id="project-toolbar">
                 <div class="action-bar">
+                    <a class="action-btn" id="btn-toggle-dashboard-view" href="dashboard.html?view=staging" style="text-decoration:none;display:flex;align-items:center;">
+                        <img src="assets/icons/dashboard.png" class="icons" style="width: 24px; height: 24px;">
+                        <span id="dashboard-view-label">STAGING DASHBOARD</span>
+                    </a>
                     <button type="button" class="action-btn" id="btn-new-project">
                         <img src="assets/add-project.png" class="icons" style="width: 30px; height: 30px;"> CREATE NEW PROJECT
                     </button>
                     <button type="button" class="action-btn" id="btn-open-project">
-                        <img src="assets/open.png" class="icons" style="width: 30px; height: 30px;"> OPEN EXISTING PROJECT
+                        <img src="assets/open.png" class="icons" style="width: 30px; height: 30px;"> OPEN PROJECT
                     </button>
-                    <a class="action-btn" id="btn-go-staging" href="staging-dashboard.html" style="text-decoration:none;display:flex;align-items:center;">
-                        <img src="assets/icons/dashboard.png" class="icons" style="width: 24px; height: 24px;"> STAGING DASHBOARD
-                    </a>
                 </div>
                 <div class="project-search-wrap">
                     <span class="project-search-icon">

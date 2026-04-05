@@ -1,15 +1,15 @@
-const db = require('../db');
+const db = require('./index');
 const bcrypt = require('bcrypt');
 
-const SUPERADMIN_USERNAME = process.env.SUPERADMIN_USERNAME || 'superadmin';
-const SUPERADMIN_PASSWORD = process.env.SUPERADMIN_PASSWORD;
+function normalizeString(value) {
+  if (value === undefined || value === null) return undefined;
+  return String(value).trim();
+}
 
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-
-function requirePassword(name, value) {
-  if (typeof value === 'string' && value.length >= 8) return;
-  console.error(`❌ Missing/invalid ${name}. Set it as an environment variable (min 8 chars).`);
+function requireCredential(name, value, { minLength = 1 } = {}) {
+  if (typeof value === 'string' && value.length >= minLength) return;
+  const suffix = minLength > 1 ? ` (min ${minLength} chars)` : '';
+  console.error(`❌ Missing/invalid ${name}. Set it in .env${suffix}.`);
   process.exit(1);
 }
 
@@ -29,21 +29,31 @@ async function upsertUser({ username, password, role }) {
 }
 
 async function seed() {
+  const superAdminUsername = normalizeString(process.env.SUPERADMIN_USERNAME) || 'superadmin';
+  const superAdminPassword = normalizeString(process.env.SUPERADMIN_PASSWORD);
+
+  const adminUsername = normalizeString(process.env.ADMIN_USERNAME) || 'admin';
+  const adminPassword = normalizeString(process.env.ADMIN_PASSWORD);
+
   console.log('🌱 Seeding database users (Super Admin + Admin)...');
 
-  requirePassword('SUPERADMIN_PASSWORD', SUPERADMIN_PASSWORD);
+  requireCredential('SUPERADMIN_PASSWORD', superAdminPassword, { minLength: 8 });
+  requireCredential('SUPERADMIN_USERNAME', superAdminUsername, { minLength: 1 });
+
   const superAdmin = await upsertUser({
-    username: SUPERADMIN_USERNAME,
-    password: SUPERADMIN_PASSWORD,
+    username: superAdminUsername,
+    password: superAdminPassword,
     role: 'super_admin',
   });
   console.log(`✅ Super Admin created/updated: ${superAdmin.username} (ID: ${superAdmin.id})`);
 
-  if (ADMIN_PASSWORD) {
-    requirePassword('ADMIN_PASSWORD', ADMIN_PASSWORD);
+  if (adminPassword) {
+    requireCredential('ADMIN_PASSWORD', adminPassword, { minLength: 8 });
+    requireCredential('ADMIN_USERNAME', adminUsername, { minLength: 1 });
+
     const admin = await upsertUser({
-      username: ADMIN_USERNAME,
-      password: ADMIN_PASSWORD,
+      username: adminUsername,
+      password: adminPassword,
       role: 'admin',
     });
     console.log(`✅ Admin created/updated: ${admin.username} (ID: ${admin.id})`);
@@ -58,3 +68,4 @@ seed()
     console.error('❌ Seeding failed:', err);
     process.exit(1);
   });
+

@@ -442,8 +442,52 @@ router.put('/upload/update', panoramaUpload.single('panorama'), (req, res) => {
   })();
 });
 
-router.delete('/upload/:filename', (_req, res) => {
-  return res.status(403).json({ success: false, message: 'Panorama deletion is disabled.' });
+// router.delete('/upload/:filename', (_req, res) => {
+//   return res.status(403).json({ success: false, message: 'Panorama deletion is disabled.' });
+// });
+
+// handle deletion for panorama images deletion
+router.delete('/upload/:filename', attachAuthenticatedUser, requireAuthenticatedApi, async (req, res) => {
+  const filename = req.params.filename;
+
+  if (!filename || filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    return res.status(400).json({ success: false, message: 'Invalid filename' });
+  }
+
+  const paths = resolvePaths(req);
+  if (!paths) {
+    return res.status(400).json({ success: false, message: 'Project required' });
+  }
+
+  const filePath = path.join(paths.uploadsDir, filename);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ success: false, message: 'File not found' });
+  }
+
+  try {
+    await fs.promises.unlink(filePath);
+    await removeDirIfExists(path.join(paths.tilesDir, tileIdFromFilename(filename)));
+
+    const order = (await getOrderedFilenames(paths)).filter((name) => name !== filename);
+    writePanoramaOrder(paths.panoramaOrderPath, order);
+
+    setPanoramaHidden(paths, filename, false);
+    const blurClear = clearBlurMasksForFilenames(paths, [filename]);
+
+    await syncProjectToDatabaseOrThrow(paths.projectId, req.authUser && req.authUser.id);
+
+    if (blurClear.changed) {
+      emitToProject(req.app, paths.projectId, 'blur-masks:changed', blurClear.blurMasks);
+    }
+
+    emitToProject(req.app, paths.projectId, 'pano:deleted', { filename });
+
+    return res.json({ success: true, message: 'Panorama deleted successfully.' });
+  } catch (error) {
+    console.error('Error deleting panorama:', error);
+    return res.status(500).json({ success: false, message: 'Error deleting panorama' });
+  }
 });
 
 router.use((err, _req, res, next) => {

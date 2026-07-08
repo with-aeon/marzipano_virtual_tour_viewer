@@ -5,6 +5,7 @@ import { initLayouts, layoutApi } from './features/layouts.js';
 import { initAuditLogs, auditLogsApi } from './features/audit-logs.js';
 import { initRename } from './features/rename.js';
 import { initUpdate } from './features/update.js';
+import { initDelete } from './features/delete.js';
 import { initVisibility } from './features/visibility.js';
 import { initUpload } from './features/upload.js';
 import { initHotspots, cleanupHotspotsForDeletedImages, updateHotspotsForRenamedImage, reloadHotspots } from './features/hotspots.js';
@@ -14,6 +15,7 @@ import { initInitialView } from './features/initial-view.js';
 import { reloadInitialViews } from './marzipano-viewer.js';
 import { io } from '/socket.io/socket.io.esm.min.js';
 import { registerTabStateSocket } from './socket-tab-state.js';
+import { initDelete } from './features/delete.js';
 
 /* Handles resolve project id. */
 function resolveProjectId(projects, token) {
@@ -45,6 +47,7 @@ if (!getProjectId()) {
   initBlurMasks();
   initMenuCollapsible();
   initInitialView();
+  initDelete();
 
   document.addEventListener('DOMContentLoaded', () => {
     (async () => {

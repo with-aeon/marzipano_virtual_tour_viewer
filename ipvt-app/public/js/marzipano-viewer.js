@@ -124,6 +124,7 @@ function updateListItemActionIcons(li) {
   const iconByAction = {
     update: isActive ? 'assets/icons/update-w.png' : 'assets/icons/update.png',
     rename: isActive ? 'assets/icons/rename-w.png' : 'assets/icons/rename.png',
+    delete: isActive ? 'assets/icons/delete-w.png' : 'assets/icons/delete-r.png',
     visibility: isHidden
       ? 'assets/icons/hide.png'
       : (!isActive && isHovered ? 'assets/icons/eye-black.png' : 'assets/icons/eye.png')
@@ -364,7 +365,8 @@ export async function loadImages(onImagesLoaded) {
         const actionButtons = [
           { action: 'visibility', icon: 'assets/icons/eye.png', alt: 'Hide' },
           { action: 'update', icon: 'assets/icons/update.png', alt: 'Update' },
-          { action: 'rename', icon: 'assets/icons/rename.png', alt: 'Rename' }
+          { action: 'rename', icon: 'assets/icons/rename.png', alt: 'Rename' },
+          { action: 'delete', icon: 'assets/icons/delete-r.png', alt: 'Delete' }
         ];
 
         actionButtons.forEach(({ action, icon, alt }) => {

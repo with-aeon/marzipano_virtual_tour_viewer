@@ -6,7 +6,7 @@ const path = require('path');
 const { findProjectByIdOrNumber } = require('../services/project-manifest.service');
 const { getProjectPaths } = require('../services/project-paths.service');
 
-const MAX_UPLOAD_FILE_SIZE_BYTES = 30 * 1024 * 1024;
+const MAX_UPLOAD_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 const ALLOWED_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png']);
 
 const WINDOWS_RESERVED_BASENAMES = new Set([

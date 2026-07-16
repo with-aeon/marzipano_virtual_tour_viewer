@@ -65,6 +65,52 @@ router.post('/upload', panoramaUpload.array('panorama', 20), async (req, res) =>
     }
     return res.status(400).json({ success: false, message: 'no file uploaded' });
   }
+
+  // AUTOMATIC IMAGE COMPRESSION
+
+for (const file of req.files) {
+    const originalPath = file.path;
+    const tempPath = originalPath + '-temp,jpg';
+    const MAX_SIZE = 30 * 1024 * 1024; // 30MB
+
+    try {
+      let currentSize = fs.statSync(originalPath).size;
+
+      if (currentSize > MAX_SIZE) {
+        console.log(`\n[Compression] ⚠️ Massive file detected: ${file.filename} (${(currentSize / (1024 * 1024)).toFixed(2)} MB)`);
+        let quality = 90;
+        let metadata = await sharp(originalPath).metadata();
+        let currentWidth = metadata.width;
+
+        while (currentSize > MAX_SIZE && quality >= 30) {
+          await sharp(originalPath)
+            .resize({ width: Math.round(currentWidth) })
+            .jpeg({ quality: quality, force: true})
+            .toFile(tempPath);
+
+          currentSize = fs.statSync(tempPath).size;
+          console.log(`[Compression] 🔄 Trying quality ${quality}% - New size: ${(currentSize / (1024 * 1024)).toFixed(2)} MB`);
+
+          if (currentSize > MAX_SIZE) {
+            quality -= 10;
+            currentWidth = currentWidth * 0.85;
+          }
+        }
+
+        fs.unlinkSync(originalPath);
+        fs.renameSync(tempPath, originalPath);
+        console.log(`[Compression] ✅ Success! Saved as ${(currentSize / (1024 * 1024)).toFixed(2)} MB.\n`);
+      }
+    } catch (err) {
+      console.error("[Compression Error]:", err);
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath);
+      }
+    }
+  }
+
+//END OF COMPRESSION LOOP
+
   const paths = resolvePaths(req);
   if (!paths) {
     return res.status(400).json({ success: false, message: 'Project required' });
